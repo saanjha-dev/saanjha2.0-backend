@@ -1,0 +1,114 @@
+server:
+  port: 8080
+  # Graceful shutdown ensures in-flight transactions complete before the server kills the process
+  shutdown: graceful
+
+spring:
+  application:
+    name: saanjha-backend
+
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/saanjha_auth
+    username: saanjha_user
+    password: securepass
+    driver-class-name: org.postgresql.Driver
+    type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      # Enterprise connection pool tuning
+      pool-name: SaanjhaHikariPool
+      minimum-idle: 2
+      maximum-pool-size: 15
+      connection-timeout: 20000 # Drop connection attempts after 20s
+      idle-timeout: 300000      # Close unused connections after 5 mins
+      max-lifetime: 1200000     # Retire connections after 20 mins to prevent DB-side closure exceptions
+
+  jpa:
+    # Use 'update' for initial rapid local dev, switch to 'validate' for Production
+    hibernate:
+      ddl-auto: update
+    open-in-view: false # CRITICAL: Disabling this prevents hidden memory leaks and N+1 query performance hits
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        generate_statistics: false # Set to true only when profiling slow queries
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    out-of-order: true # Allows multiple developers to merge migration scripts concurrently without breaking the version chain
+    clean-on-validation-error: true # Local dev only: Self-heals the DB if schemas mismatch #Danger in prod
+
+  data:
+    redis:
+      host: localhost
+      port: 6380
+      timeout: 2000
+      lettuce:
+        pool:
+          max-active: 10
+          max-idle: 5
+          min-idle: 1
+
+  rabbitmq:
+    host: localhost
+    port: 5673
+    username: saanjha_mq_user
+    password: RabbitSecurePass2026!
+    listener:
+      simple:
+        retry:
+          enabled: true
+          initial-interval: 2000
+          max-attempts: 3
+          multiplier: 2.0
+  mail:
+    host: smtp.gmail.com # Or your provider
+    port: 587
+    username: "saanjha.community@gmail.com"
+    password: "kesfgmmrfdswrvdq"
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+# ---------------------------------------------------------------------------
+# CUSTOM APPLICATION PROPERTIES
+# ---------------------------------------------------------------------------
+app:
+  jwt:
+    # In production, inject this via environment variables: ${JWT_SECRET}
+    secret: "y3CakhsAeQF8ltyjVmFnuB5YOXIZJBug+uf1ZdHJtkEpvyjndJWBX/NQUA+NxhvPeX9f+8qBSH9oa/Sz21eDiA=="
+    expiration-ms: 900000         # 15 Minutes
+    refresh-expiration-ms: 604800000 # 7 Days
+
+  security:
+    # Local Dev: Allow everything across the Wi-Fi network
+    allowed-origins: "*"
+#      - "http://localhost:5173"
+#      - "http://192.168.*" # Supports wildcard subnets for local testing
+    allow-credentials: true
+rsa:
+  private-key: classpath:keys/private.pem
+  public-key: classpath:keys/public.pem
+
+# ---------------------------------------------------------------------------
+# OBSERVABILITY & MONITORING
+# ---------------------------------------------------------------------------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, metrics, prometheus, info
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
