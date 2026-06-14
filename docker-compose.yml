@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  saanjha-postgres:
+    image: postgres:15-alpine
+    container_name: saanjha_db_node
+    environment:
+      POSTGRES_DB: saanjha_auth
+      POSTGRES_USER: saanjha_user
+      POSTGRES_PASSWORD: securepass
+      # Optimize Postgres for local development memory usage
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    ports:
+      - "5433:5432"
+    volumes:
+      - saanjha_pg_data:/var/lib/postgresql/data
+    networks:
+      - saanjha-network
+    # CRITICAL: Healthchecks prevent the backend from trying to connect before DB is actually ready to accept TCP connections
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saanjha_user -d saanjha_auth"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  saanjha-redis:
+    image: redis:7-alpine
+    container_name: saanjha_cache_node
+    command: >
+      redis-server 
+      --port 6379 
+      --maxmemory 256mb 
+      --maxmemory-policy allkeys-lru 
+      --appendonly yes 
+      --appendfsync everysec
+    ports:
+      - "6380:6379"
+    volumes:
+      - saanjha_redis_data:/data
+    networks:
+      - saanjha-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  saanjha-rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: saanjha_mq_node
+    environment:
+      RABBITMQ_DEFAULT_USER: saanjha_mq_user
+      RABBITMQ_DEFAULT_PASS: RabbitSecurePass2026!
+    ports:
+      - "5673:5672"   # AMQP protocol port
+      - "15673:15672" # Management UI port
+    volumes:
+      - saanjha_mq_data:/var/lib/rabbitmq
+    networks:
+      - saanjha-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  saanjha_pg_data:
+    driver: local
+  saanjha_redis_data:
+    driver: local
+  saanjha_mq_data:
+    driver: local
+
+networks:
+  saanjha-network:
+    driver: bridge
