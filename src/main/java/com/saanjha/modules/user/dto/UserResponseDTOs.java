@@ -8,6 +8,7 @@ public class UserResponseDTOs {
 
     public record UserProfileResponse(
             UUID id,
+            String uniqueHandle,
             String displayName,
             String headline,
             String bio,
@@ -50,5 +51,22 @@ public class UserResponseDTOs {
 
     public record ProfilePhotoResponse(
             String profileImageUrl
+    ) {}
+
+    public record PublicProfileResponse(
+            UUID id,
+            String uniqueHandle,
+            String displayName,
+            String headline,
+            String bio,
+            String location,
+            String college,
+            String experienceLevel,
+            String profileImageUrl,
+            int profileScore,
+            int projectsCompleted,
+            List<UserSkillResponse> skills,
+            List<UserInterestResponse> interests,
+            List<UserSocialLinkResponse> socialLinks
     ) {}
 }

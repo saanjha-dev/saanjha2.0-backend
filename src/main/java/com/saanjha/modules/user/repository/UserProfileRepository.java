@@ -13,4 +13,7 @@ public interface UserProfileRepository extends JpaRepository<UserProfile, UUID> 
     Optional<UserProfile> findByUserId(UUID userId);
     
     boolean existsByUserId(UUID userId);
+    java.util.Optional<UserProfile> findByUniqueHandleIgnoreCase(String uniqueHandle);
+
+    boolean existsByUniqueHandleIgnoreCaseAndUserIdNot(String uniqueHandle, UUID userId);
 }
