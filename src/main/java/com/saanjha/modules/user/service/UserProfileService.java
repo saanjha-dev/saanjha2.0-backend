@@ -51,7 +51,7 @@ public class UserProfileService {
     }
 
     @Transactional
-    public void updateProfile(UUID userId, UpdateProfileRequest request) {
+    public int updateProfile(UUID userId, UpdateProfileRequest request) {
         UserProfile profile = getProfileEntity(userId);
 
         profile.setDisplayName(request.displayName());
@@ -61,7 +61,7 @@ public class UserProfileService {
         profile.setCollege(request.college());
         profile.setExperienceLevel(request.experienceLevel());
 
-        // ADDED: Unique Handle Duplicate Guard Check
+        // Unique Handle Duplicate Guard Check
         if (request.uniqueHandle() != null && !request.uniqueHandle().trim().isEmpty()) {
             String normalizedHandle = request.uniqueHandle().trim().toLowerCase();
 
@@ -73,7 +73,7 @@ public class UserProfileService {
         }
 
         profileRepository.save(profile);
-        triggerProfileUpdatePipeline(profile);
+        return triggerProfileUpdatePipeline(profile);
     }
 
     // ========================================================================
@@ -81,7 +81,7 @@ public class UserProfileService {
     // ========================================================================
 
     @Transactional
-    public void addSkill(UUID userId, AddSkillRequest request) {
+    public int addSkill(UUID userId, AddSkillRequest request) {
         UserProfile profile = getProfileEntity(userId);
         String normalizedSkill = normalizeString(request.skillName());
 
@@ -90,18 +90,20 @@ public class UserProfileService {
         }
 
         UserSkill skill = new UserSkill();
-        skill.setProfile(profile);
         skill.setSkillName(normalizedSkill);
         skill.setSkillLevel(request.skillLevel().toUpperCase());
 
+        // Syncs bidirectional relationship in memory so the Score Calculator sees it
+        profile.addSkill(skill);
+
         skillRepository.save(skill);
-        triggerProfileUpdatePipeline(profile);
+        return triggerProfileUpdatePipeline(profile);
     }
 
     @Transactional
-    public void removeSkill(UUID userId, UUID skillId) {
+    public int removeSkill(UUID userId, UUID skillId) {
         skillRepository.deleteByIdAndProfile_UserId(skillId, userId);
-        triggerProfileUpdatePipeline(getProfileEntity(userId));
+        return triggerProfileUpdatePipeline(getProfileEntity(userId));
     }
 
     // ========================================================================
@@ -109,7 +111,7 @@ public class UserProfileService {
     // ========================================================================
 
     @Transactional
-    public void addInterest(UUID userId, AddInterestRequest request) {
+    public int addInterest(UUID userId, AddInterestRequest request) {
         UserProfile profile = getProfileEntity(userId);
         String normalizedInterest = normalizeString(request.interestName());
 
@@ -118,17 +120,19 @@ public class UserProfileService {
         }
 
         UserInterest interest = new UserInterest();
-        interest.setProfile(profile);
         interest.setInterestName(normalizedInterest);
 
+        // Syncs bidirectional relationship in memory
+        profile.addInterest(interest);
+
         interestRepository.save(interest);
-        triggerProfileUpdatePipeline(profile);
+        return triggerProfileUpdatePipeline(profile);
     }
 
     @Transactional
-    public void removeInterest(UUID userId, UUID interestId) {
+    public int removeInterest(UUID userId, UUID interestId) {
         interestRepository.deleteByIdAndProfile_UserId(interestId, userId);
-        triggerProfileUpdatePipeline(getProfileEntity(userId));
+        return triggerProfileUpdatePipeline(getProfileEntity(userId));
     }
 
     // ========================================================================
@@ -136,7 +140,7 @@ public class UserProfileService {
     // ========================================================================
 
     @Transactional
-    public void addSocialLink(UUID userId, AddSocialLinkRequest request) {
+    public int addSocialLink(UUID userId, AddSocialLinkRequest request) {
         UserProfile profile = getProfileEntity(userId);
         String platform = request.platformName().toUpperCase();
 
@@ -145,18 +149,20 @@ public class UserProfileService {
         }
 
         UserSocialLink link = new UserSocialLink();
-        link.setProfile(profile);
         link.setPlatformName(platform);
         link.setUrl(request.url());
 
+        // Syncs bidirectional relationship in memory
+        profile.addSocialLink(link);
+
         socialLinkRepository.save(link);
-        triggerProfileUpdatePipeline(profile);
+        return triggerProfileUpdatePipeline(profile);
     }
 
     @Transactional
-    public void removeSocialLink(UUID userId, UUID linkId) {
+    public int removeSocialLink(UUID userId, UUID linkId) {
         socialLinkRepository.deleteByIdAndProfile_UserId(linkId, userId);
-        triggerProfileUpdatePipeline(getProfileEntity(userId));
+        return triggerProfileUpdatePipeline(getProfileEntity(userId));
     }
 
     // ========================================================================
@@ -209,8 +215,9 @@ public class UserProfileService {
 
     /**
      * Executes the post-update pipeline: Recalculates score, caches it, and publishes events.
+     * Returns the newly calculated score.
      */
-    private void triggerProfileUpdatePipeline(UserProfile profile) {
+    private int triggerProfileUpdatePipeline(UserProfile profile) {
         int oldScore = profile.getProfileScore();
         int newScore = calculateAndCacheProfileScore(profile);
 
@@ -225,6 +232,8 @@ public class UserProfileService {
         if (oldScore < COMPLETION_THRESHOLD && newScore >= COMPLETION_THRESHOLD) {
             eventPublisher.publishEvent(new ProfileCompletedEvent(profile.getUserId()));
         }
+
+        return newScore;
     }
 
     private int getOrCalculateProfileScore(UserProfile profile) {
@@ -348,7 +357,7 @@ public class UserProfileService {
     }
 
     // ========================================================================
-    // DTO MAPPERS (FIXED WITH UNIQUE HANDLE)
+    // DTO MAPPERS
     // ========================================================================
 
     private UserProfileResponse mapToProfileResponse(UserProfile profile, int score) {
@@ -372,7 +381,6 @@ public class UserProfileService {
                 .map(l -> new UserSocialLinkResponse(l.getId(), l.getPlatformName(), l.getUrl()))
                 .collect(Collectors.toList());
 
-        // FIXED: Added profile.getUniqueHandle()
         return new UserProfileResponse(
                 profile.getId(), profile.getUniqueHandle(), profile.getDisplayName(), profile.getHeadline(), profile.getBio(),
                 profile.getLocation(), profile.getCollege(), profile.getExperienceLevel(),
@@ -397,7 +405,6 @@ public class UserProfileService {
                 .map(l -> new UserSocialLinkResponse(l.getId(), l.getPlatformName(), l.getUrl()))
                 .collect(Collectors.toList());
 
-        // FIXED: Added profile.getUniqueHandle()
         return new PublicProfileResponse(
                 profile.getId(), profile.getUniqueHandle(), profile.getDisplayName(), profile.getHeadline(), profile.getBio(),
                 profile.getLocation(), profile.getCollege(), profile.getExperienceLevel(),

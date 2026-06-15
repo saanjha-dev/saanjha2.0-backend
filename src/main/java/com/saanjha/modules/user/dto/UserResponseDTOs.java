@@ -69,4 +69,9 @@ public class UserResponseDTOs {
             List<UserInterestResponse> interests,
             List<UserSocialLinkResponse> socialLinks
     ) {}
+
+    public record ProfileMutationResponse(
+            String message,
+            int newScore
+    ) {}
 }
