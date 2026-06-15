@@ -8,8 +8,8 @@ import com.saanjha.modules.user.event.UserEvents.ProfileUpdatedEvent;
 import com.saanjha.modules.user.repository.*;
 import com.saanjha.shared.exception.AppException;
 import com.saanjha.shared.exception.ErrorCode;
-
 import com.saanjha.shared.storage.CloudinaryService;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -31,7 +31,7 @@ public class UserProfileService {
     private final UserPreferencesRepository preferencesRepository;
 
     private final CloudinaryService cloudinaryService;
-    
+
     private final StringRedisTemplate redisTemplate;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -44,9 +44,9 @@ public class UserProfileService {
     @Transactional(readOnly = true)
     public UserProfileResponse getProfile(UUID userId) {
         UserProfile profile = getProfileEntity(userId);
-        
+
         int score = getOrCalculateProfileScore(profile);
-        
+
         return mapToProfileResponse(profile, score);
     }
 
@@ -60,6 +60,17 @@ public class UserProfileService {
         profile.setLocation(request.location());
         profile.setCollege(request.college());
         profile.setExperienceLevel(request.experienceLevel());
+
+        // ADDED: Unique Handle Duplicate Guard Check
+        if (request.uniqueHandle() != null && !request.uniqueHandle().trim().isEmpty()) {
+            String normalizedHandle = request.uniqueHandle().trim().toLowerCase();
+
+            // Check if another user has already claimed this handle
+            if (profileRepository.existsByUniqueHandleIgnoreCaseAndUserIdNot(normalizedHandle, userId)) {
+                throw new AppException(ErrorCode.CONFLICT, "This unique handle is already claimed.");
+            }
+            profile.setUniqueHandle(normalizedHandle);
+        }
 
         profileRepository.save(profile);
         triggerProfileUpdatePipeline(profile);
@@ -82,7 +93,7 @@ public class UserProfileService {
         skill.setProfile(profile);
         skill.setSkillName(normalizedSkill);
         skill.setSkillLevel(request.skillLevel().toUpperCase());
-        
+
         skillRepository.save(skill);
         triggerProfileUpdatePipeline(profile);
     }
@@ -109,7 +120,7 @@ public class UserProfileService {
         UserInterest interest = new UserInterest();
         interest.setProfile(profile);
         interest.setInterestName(normalizedInterest);
-        
+
         interestRepository.save(interest);
         triggerProfileUpdatePipeline(profile);
     }
@@ -219,7 +230,7 @@ public class UserProfileService {
     private int getOrCalculateProfileScore(UserProfile profile) {
         String redisKey = "user:profile_score:" + profile.getUserId();
         String cachedScore = redisTemplate.opsForValue().get(redisKey);
-        
+
         if (cachedScore != null) {
             return Integer.parseInt(cachedScore);
         }
@@ -228,12 +239,12 @@ public class UserProfileService {
 
     private int calculateAndCacheProfileScore(UserProfile profile) {
         int score = 0;
-        
+
         // 1. Basic Info (Max 25%)
         if (profile.getProfileImageUrl() != null) score += 10;
         if (profile.getHeadline() != null && !profile.getHeadline().isEmpty()) score += 5;
         if (profile.getBio() != null && !profile.getBio().isEmpty()) score += 10;
-        
+
         // 2. Experience & Location (Max 15%)
         if (profile.getLocation() != null) score += 5;
         if (profile.getExperienceLevel() != null) score += 10;
@@ -248,45 +259,12 @@ public class UserProfileService {
 
         // Cap at 100
         score = Math.min(score, 100);
-        
+
         // Save to Redis with a 24-hour TTL (recalculated automatically on updates anyway)
         String redisKey = "user:profile_score:" + profile.getUserId();
         redisTemplate.opsForValue().set(redisKey, String.valueOf(score), java.time.Duration.ofHours(24));
-        
+
         return score;
-    }
-
-    // ========================================================================
-    // DTO MAPPERS
-    // ========================================================================
-
-    private UserProfileResponse mapToProfileResponse(UserProfile profile, int score) {
-        UserPreferences prefs = profile.getPreferences();
-        UserPreferencesResponse prefsResponse = (prefs != null) 
-            ? new UserPreferencesResponse(prefs.getTheme(), prefs.isEmailNotifications(), prefs.getProfileVisibility()) 
-            : null;
-
-        List<UserSkillResponse> skills = profile.getSkills().stream()
-            .filter(s -> !s.isDeleted())
-            .map(s -> new UserSkillResponse(s.getId(), s.getSkillName(), s.getSkillLevel(), s.isVerified(), s.getVerifiedAt()))
-            .collect(Collectors.toList());
-
-        List<UserInterestResponse> interests = profile.getInterests().stream()
-            .filter(i -> !i.isDeleted())
-            .map(i -> new UserInterestResponse(i.getId(), i.getInterestName()))
-            .collect(Collectors.toList());
-
-        List<UserSocialLinkResponse> links = profile.getSocialLinks().stream()
-            .filter(l -> !l.isDeleted())
-            .map(l -> new UserSocialLinkResponse(l.getId(), l.getPlatformName(), l.getUrl()))
-            .collect(Collectors.toList());
-
-        return new UserProfileResponse(
-            profile.getId(), profile.getDisplayName(), profile.getHeadline(), profile.getBio(),
-            profile.getLocation(), profile.getCollege(), profile.getExperienceLevel(),
-            profile.getProfileImageUrl(), score, profile.getProjectsCompleted(),
-            prefsResponse, skills, interests, links
-        );
     }
 
     // ========================================================================
@@ -307,5 +285,124 @@ public class UserProfileService {
 
         // 3. Publish an event so the Auth module knows to revoke their active JWT sessions
         // eventPublisher.publishEvent(new ProfileDeletedEvent(userId));
+    }
+
+    // ========================================================================
+    // PUBLIC PROFILE VIEW (PRIVACY-MASKED)
+    // ========================================================================
+
+    @Transactional(readOnly = true)
+    public PublicProfileResponse getPublicProfile(UUID targetUserId, UUID requesterId) {
+        UserProfile profile = getProfileEntity(targetUserId);
+
+        // 1. Evaluate Privacy Guardrails
+        String visibility = profile.getPreferences() != null
+                ? profile.getPreferences().getProfileVisibility()
+                : "PUBLIC";
+
+        // If the requester is looking at their own public profile link, bypass guards
+        if (!targetUserId.equals(requesterId)) {
+            if ("PRIVATE".equalsIgnoreCase(visibility)) {
+                throw new AppException(ErrorCode.FORBIDDEN, "This profile is private.");
+            } else if ("CONNECTIONS_ONLY".equalsIgnoreCase(visibility)) {
+                // TODO: When the Connections Module is built, inject ConnectionService here to verify relationship
+                throw new AppException(ErrorCode.FORBIDDEN, "You must be connected with this user to view their profile.");
+            }
+        }
+
+        // 2. Fetch Score and Map to Safe DTO
+        int score = getOrCalculateProfileScore(profile);
+        return mapToPublicProfileResponse(profile, score);
+    }
+
+    // ========================================================================
+    // DEDICATED SLUG LOOKUP
+    // ========================================================================
+
+    @Transactional(readOnly = true)
+    public PublicProfileResponse getProfileByHandle(String handle) {
+        // Strip out '@' symbol if passed by the frontend routing engine
+        String sanitizedHandle = handle.startsWith("@") ? handle.substring(1) : handle;
+
+        UserProfile profile = profileRepository.findByUniqueHandleIgnoreCase(sanitizedHandle.trim())
+                .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "Profile with handle @" + sanitizedHandle + " not found."));
+
+        // Enforce privacy guardrails identically to direct UUID queries
+        String visibility = profile.getPreferences() != null ? profile.getPreferences().getProfileVisibility() : "PUBLIC";
+        if ("PRIVATE".equalsIgnoreCase(visibility)) {
+            throw new AppException(ErrorCode.FORBIDDEN, "This profile is private.");
+        }
+
+        return mapToPublicProfileResponse(profile, getOrCalculateProfileScore(profile));
+    }
+
+    // ========================================================================
+    // GDPR COMPLIANCE DATA EXPORT
+    // ========================================================================
+
+    @Transactional(readOnly = true)
+    public UserProfileResponse exportUserData(UUID userId) {
+        // Fetch the full database snapshot belonging to the user context
+        UserProfile profile = getProfileEntity(userId);
+        return mapToProfileResponse(profile, getOrCalculateProfileScore(profile));
+    }
+
+    // ========================================================================
+    // DTO MAPPERS (FIXED WITH UNIQUE HANDLE)
+    // ========================================================================
+
+    private UserProfileResponse mapToProfileResponse(UserProfile profile, int score) {
+        UserPreferences prefs = profile.getPreferences();
+        UserPreferencesResponse prefsResponse = (prefs != null)
+                ? new UserPreferencesResponse(prefs.getTheme(), prefs.isEmailNotifications(), prefs.getProfileVisibility())
+                : null;
+
+        List<UserSkillResponse> skills = profile.getSkills().stream()
+                .filter(s -> !s.isDeleted())
+                .map(s -> new UserSkillResponse(s.getId(), s.getSkillName(), s.getSkillLevel(), s.isVerified(), s.getVerifiedAt()))
+                .collect(Collectors.toList());
+
+        List<UserInterestResponse> interests = profile.getInterests().stream()
+                .filter(i -> !i.isDeleted())
+                .map(i -> new UserInterestResponse(i.getId(), i.getInterestName()))
+                .collect(Collectors.toList());
+
+        List<UserSocialLinkResponse> links = profile.getSocialLinks().stream()
+                .filter(l -> !l.isDeleted())
+                .map(l -> new UserSocialLinkResponse(l.getId(), l.getPlatformName(), l.getUrl()))
+                .collect(Collectors.toList());
+
+        // FIXED: Added profile.getUniqueHandle()
+        return new UserProfileResponse(
+                profile.getId(), profile.getUniqueHandle(), profile.getDisplayName(), profile.getHeadline(), profile.getBio(),
+                profile.getLocation(), profile.getCollege(), profile.getExperienceLevel(),
+                profile.getProfileImageUrl(), score, profile.getProjectsCompleted(),
+                prefsResponse, skills, interests, links
+        );
+    }
+
+    private PublicProfileResponse mapToPublicProfileResponse(UserProfile profile, int score) {
+        List<UserSkillResponse> skills = profile.getSkills().stream()
+                .filter(s -> !s.isDeleted())
+                .map(s -> new UserSkillResponse(s.getId(), s.getSkillName(), s.getSkillLevel(), s.isVerified(), s.getVerifiedAt()))
+                .collect(Collectors.toList());
+
+        List<UserInterestResponse> interests = profile.getInterests().stream()
+                .filter(i -> !i.isDeleted())
+                .map(i -> new UserInterestResponse(i.getId(), i.getInterestName()))
+                .collect(Collectors.toList());
+
+        List<UserSocialLinkResponse> links = profile.getSocialLinks().stream()
+                .filter(l -> !l.isDeleted())
+                .map(l -> new UserSocialLinkResponse(l.getId(), l.getPlatformName(), l.getUrl()))
+                .collect(Collectors.toList());
+
+        // FIXED: Added profile.getUniqueHandle()
+        return new PublicProfileResponse(
+                profile.getId(), profile.getUniqueHandle(), profile.getDisplayName(), profile.getHeadline(), profile.getBio(),
+                profile.getLocation(), profile.getCollege(), profile.getExperienceLevel(),
+                profile.getProfileImageUrl(), score, profile.getProjectsCompleted(),
+                skills, interests, links
+        );
     }
 }

@@ -11,6 +11,10 @@ public class UserRequestDTOs {
             @Size(max = 100, message = "Display name cannot exceed 100 characters")
             String displayName,
 
+            @Pattern(regexp = "^[a-z0-9_\\-]+$", message = "Handle can only contain lowercase alphanumeric characters, dashes, or underscores")
+            @Size(min = 3, max = 50, message = "Handle must be between 3 and 50 characters")
+            String uniqueHandle,
+
             @Size(max = 150, message = "Headline cannot exceed 150 characters")
             String headline,
 

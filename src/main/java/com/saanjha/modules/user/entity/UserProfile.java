@@ -23,6 +23,9 @@ public class UserProfile extends BaseAuditEntity {
     private UUID userId; // Logical link to auth.auth_users
 
     private String displayName;
+
+    @Column(name = "unique_handle", length = 50)
+    private String uniqueHandle;
     private String headline;
     
     @Column(columnDefinition = "TEXT")

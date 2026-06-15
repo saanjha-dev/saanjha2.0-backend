@@ -4,6 +4,8 @@ import com.saanjha.modules.user.dto.UserRequestDTOs.*;
 import com.saanjha.modules.user.dto.UserResponseDTOs.*;
 import com.saanjha.modules.user.service.UserProfileService;
 import com.saanjha.shared.api.ApiEnvelope;
+import com.saanjha.shared.exception.AppException;
+import com.saanjha.shared.exception.ErrorCode;
 import com.saanjha.shared.ratelimit.RateLimit;
 import com.saanjha.shared.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
@@ -46,9 +48,16 @@ public class UserController {
     }
 
     // ========================================================================
-    // PROFILE PHOTO ENDPOINT
+    // PUBLIC PROFILE ENDPOINT
     // ========================================================================
 
+    @GetMapping("/{userId}")
+    @RateLimit(action = "get-public-profile", baseLimit = 30)
+    @Operation(summary = "Get Public Profile", description = "Fetches a user's profile. Strictly enforces visibility preferences (Public, Private, Connections Only).")
+    public ResponseEntity<ApiEnvelope<PublicProfileResponse>> getPublicProfile(@PathVariable UUID userId) {
+        PublicProfileResponse response = profileService.getPublicProfile(userId, SecurityUtils.getCurrentUserId());
+        return ResponseEntity.ok(ApiEnvelope.success(response));
+    }
     // ========================================================================
     // PROFILE PHOTO ENDPOINT
     // ========================================================================
@@ -63,6 +72,46 @@ public class UserController {
 
         // FIXED: Wrap the URL in a proper DTO and use the single-parameter success method
         return ResponseEntity.ok(ApiEnvelope.success(new ProfilePhotoResponse(newUrl)));
+    }
+
+    // ========================================================================
+    // PUBLIC SLUG ROUTING
+    // ========================================================================
+
+    @GetMapping("/handle/{handle}")
+    @RateLimit(action = "get-profile-by-handle", baseLimit = 30)
+    @Operation(summary = "Get Profile by Handle", description = "Fetches a public profile via vanity slug (e.g., '@rahul_dev'). Case-insensitive.")
+    public ResponseEntity<ApiEnvelope<PublicProfileResponse>> getProfileByHandle(@PathVariable String handle) {
+        PublicProfileResponse response = profileService.getProfileByHandle(handle);
+        return ResponseEntity.ok(ApiEnvelope.success(response));
+    }
+
+    // ========================================================================
+    // GDPR DATA COMPLIANCE EXPORT
+    // ========================================================================
+
+    @GetMapping("/me/export")
+    @RateLimit(action = "gdpr-export", baseLimit = 2, baseTimeSeconds = 3600) // Restricted to 2 attempts per hour
+    @Operation(summary = "Export Personal Data", description = "Generates and downloads a complete structural JSON file containing all data stored about the user, complying with legal GDPR right-to-data-portability parameters.")
+    public ResponseEntity<byte[]> exportMyData() {
+        UserProfileResponse dataSnapshot = profileService.exportUserData(SecurityUtils.getCurrentUserId());
+
+        // Convert our standard object into an indented, beautiful JSON byte array payload
+        byte[] jsonBytes;
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule()); // Correctly formats timestamps
+            jsonBytes = mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(dataSnapshot);
+        } catch (Exception e) {
+            throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Failed to compile data archive.");
+        }
+
+        String filename = "saanjha_data_archive_" + SecurityUtils.getCurrentUserId() + ".json";
+
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(org.springframework.http.MediaType.APPLICATION_OCTET_STREAM)
+                .body(jsonBytes);
     }
 
 
