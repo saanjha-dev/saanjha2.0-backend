@@ -1,5 +1,5 @@
 server:
-  port: 8081
+  port: 8080
   # Graceful shutdown ensures in-flight transactions complete before the server kills the process
   shutdown: graceful
 
@@ -11,9 +11,9 @@ spring:
     timeout-per-shutdown-phase: 20s
 
   datasource:
-    url: jdbc:postgresql://localhost:5433/saanjha_auth
-    username: saanjha_user
-    password: securepass
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     type: com.zaxxer.hikari.HikariDataSource
     hikari:
@@ -46,8 +46,8 @@ spring:
 
   data:
     redis:
-      host: localhost
-      port: 6380
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
       timeout: 2000
       lettuce:
         pool:
@@ -56,10 +56,10 @@ spring:
           min-idle: 1
 
   rabbitmq:
-    host: localhost
-    port: 5673
-    username: saanjha_mq_user
-    password: RabbitSecurePass2026!
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
     listener:
       simple:
         retry:
