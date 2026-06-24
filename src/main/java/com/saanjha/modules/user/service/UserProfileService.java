@@ -102,8 +102,12 @@ public class UserProfileService {
 
     @Transactional
     public int removeSkill(UUID userId, UUID skillId) {
-        skillRepository.deleteByIdAndProfile_UserId(skillId, userId);
-        return triggerProfileUpdatePipeline(getProfileEntity(userId));
+        UserProfile profile = getProfileEntity(userId);
+
+        profile.getSkills()
+                .removeIf(skill -> skill.getId().equals(skillId));
+
+        return triggerProfileUpdatePipeline(profile);
     }
 
     // ========================================================================
@@ -131,8 +135,12 @@ public class UserProfileService {
 
     @Transactional
     public int removeInterest(UUID userId, UUID interestId) {
-        interestRepository.deleteByIdAndProfile_UserId(interestId, userId);
-        return triggerProfileUpdatePipeline(getProfileEntity(userId));
+        UserProfile profile = getProfileEntity(userId);
+
+        profile.getInterests()
+                .removeIf(interest -> interest.getId().equals(interestId));
+
+        return triggerProfileUpdatePipeline(profile);
     }
 
     // ========================================================================
@@ -161,8 +169,12 @@ public class UserProfileService {
 
     @Transactional
     public int removeSocialLink(UUID userId, UUID linkId) {
-        socialLinkRepository.deleteByIdAndProfile_UserId(linkId, userId);
-        return triggerProfileUpdatePipeline(getProfileEntity(userId));
+        UserProfile profile = getProfileEntity(userId);
+
+        profile.getSocialLinks()
+                .removeIf(link -> link.getId().equals(linkId));
+
+        return triggerProfileUpdatePipeline(profile);
     }
 
     // ========================================================================

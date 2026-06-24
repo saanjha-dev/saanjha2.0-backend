@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8081
   # Graceful shutdown ensures in-flight transactions complete before the server kills the process
   shutdown: graceful
 
