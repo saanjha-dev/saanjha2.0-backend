@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8081
   # Graceful shutdown ensures in-flight transactions complete before the server kills the process
   shutdown: graceful
 
@@ -40,6 +40,7 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
+    locations: classpath:db/migration/auth_,classpath:db/migration/usr_
     out-of-order: true # Allows multiple developers to merge migration scripts concurrently without breaking the version chain
     clean-on-validation-error: true # Local dev only: Self-heals the DB if schemas mismatch #Danger in prod
 
@@ -69,8 +70,8 @@ spring:
   mail:
     host: smtp.gmail.com # Or your provider
     port: 587
-    username: "saanjha.community@gmail.com"
-    password: "kesfgmmrfdswrvdq"
+    username: ${MAIL_ID}
+    password: ${MAIL_PASSWORD}
     properties:
       mail:
         smtp:
@@ -78,13 +79,18 @@ spring:
           starttls:
             enable: true
 
+  servlet:
+    multipart:
+      max-file-size: 5MB    # Maximum size for a single file
+      max-request-size: 5MB # Maximum size for a single request
+
 # ---------------------------------------------------------------------------
 # CUSTOM APPLICATION PROPERTIES
 # ---------------------------------------------------------------------------
 app:
   jwt:
     # In production, inject this via environment variables: ${JWT_SECRET}
-    secret: "y3CakhsAeQF8ltyjVmFnuB5YOXIZJBug+uf1ZdHJtkEpvyjndJWBX/NQUA+NxhvPeX9f+8qBSH9oa/Sz21eDiA=="
+    secret: ${JWT_SECRET}
     expiration-ms: 900000         # 15 Minutes
     refresh-expiration-ms: 604800000 # 7 Days
 
@@ -94,6 +100,10 @@ app:
 #      - "http://localhost:5173"
 #      - "http://192.168.*" # Supports wildcard subnets for local testing
     allow-credentials: true
+  cloudinary:
+    cloud-name: ${CLOUD_NAME} # Replace with your Cloudinary Cloud Name
+    api-key: ${CLOUD_API_KEY}       # Replace with your API Key
+    api-secret: ${CLOUD_API_SECRET}
 rsa:
   private-key: classpath:keys/private.pem
   public-key: classpath:keys/public.pem

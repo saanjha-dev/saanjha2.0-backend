@@ -111,7 +111,7 @@ public class TokenRotationService {
 
         // 3. Generate New Tokens
         AuthUser user = userRepository.findById(session.getUserId())
-                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, "User not found."));
+                .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "User not found."));
 
         String newRawRefreshToken = UUID.randomUUID().toString();
 

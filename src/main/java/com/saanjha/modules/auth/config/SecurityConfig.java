@@ -56,7 +56,8 @@ public class SecurityConfig {
                                 "/v1/auth/resend-verification",
                                 "/v1/auth/forgot-password",
                                 "/v1/auth/reset-password",
-                                "/v1/auth/verify-reset-otp"
+                                "/v1/auth/verify-reset-otp",
+                                "/v1/users/**"
                         ).permitAll()
                         .requestMatchers("/actuator/**", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
                         .anyRequest().authenticated()
