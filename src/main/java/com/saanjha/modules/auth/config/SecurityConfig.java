@@ -60,6 +60,9 @@ public class SecurityConfig {
                                 "/v1/users/**"
                         ).permitAll()
                         .requestMatchers("/actuator/**", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
+                        // Public read access to project listings/detail (Security Matrix: GUEST can "View public projects").
+                        // Visibility rules for DRAFT/ARCHIVED are still enforced in ProjectService, not here.
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/projects/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

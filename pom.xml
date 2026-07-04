@@ -80,6 +80,12 @@
             <artifactId>cloudinary-http44</artifactId>
             <version>1.36.0</version>
         </dependency>
+        <!-- Project module: sanitizes user-authored Markdown/HTML (Spec H.2 #4: XSS in Project Markdown) -->
+        <dependency>
+            <groupId>com.googlecode.owasp-java-html-sanitizer</groupId>
+            <artifactId>owasp-java-html-sanitizer</artifactId>
+            <version>20240325.1</version>
+        </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
