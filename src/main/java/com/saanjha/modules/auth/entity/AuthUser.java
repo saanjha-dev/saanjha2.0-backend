@@ -1,0 +1,45 @@
+package com.saanjha.modules.auth.entity;
+
+import com.saanjha.shared.audit.BaseAuditEntity;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+import java.util.UUID;
+
+@Entity
+@Table(name = "auth_users", schema = "auth")
+@Getter @Setter
+public class AuthUser extends BaseAuditEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
+    @Column(unique = true, nullable = false, updatable = false)
+    private String email;
+
+    @Column(name = "password_hash", nullable = false)
+    private String passwordHash;
+
+    @Column(name = "is_email_verified", nullable = false)
+    private boolean emailVerified = false;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "account_status", nullable = false)
+    private AccountStatus status = AccountStatus.ACTIVE;
+
+    // REMOVE the old private Role role; field.
+    // ADD THIS RELATIONAL MAPPING:
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "auth_user_roles",
+            schema = "auth",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "role_id")
+    )
+    private java.util.Set<AuthRole> roles = new java.util.HashSet<>();
+
+    public enum AccountStatus {
+        ACTIVE, SUSPENDED, LOCKED
+    }
+}
