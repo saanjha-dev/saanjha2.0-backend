@@ -41,6 +41,7 @@ public enum ErrorCode {
     CONFLICT(HttpStatus.CONFLICT, "The request could not be completed due to a conflict with the current state."),
     ALREADY_EXISTS(HttpStatus.CONFLICT, "The resource you are trying to create already exists."),
     STATE_TRANSITION_FAILED(HttpStatus.CONFLICT, "The requested action is not valid for the resource's current state."),
+    PROJECT_READ_ONLY(HttpStatus.CONFLICT, "This project is completed or archived and can no longer be modified."),
 
     // ========================================================================
     // 413 & 415: FILE UPLOADS & MEDIA (CLOUDINARY)
