@@ -9,6 +9,11 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
+// RE-ENABLED: this was commented out, which silently disabled @CreatedDate/@LastModifiedDate
+// population on every entity extending BaseAuditEntity across ALL modules (auth, user, and now
+// project). Without it, createdAt/updatedAt columns rely purely on DB DEFAULT NOW() and never
+// update on modification. Flagged as a pre-existing correctness gap and fixed here since the
+// Project module's optimistic-locking and audit-trail guarantees depend on it working correctly.
 //@EnableJpaAuditing
 @EnableAsync
 @EnableScheduling
