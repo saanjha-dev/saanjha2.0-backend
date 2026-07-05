@@ -57,4 +57,22 @@ public class ProjectResponseDTOs {
             String message,
             String status
     ) {}
+
+    /**
+     * A deliberately narrow, internal-only read contract for other modules
+     * (first consumer: Application) that need to validate against a project's
+     * current state without depending on the full public {@link ProjectResponse}
+     * shape or bypassing visibility rules meant for end-user-facing reads.
+     * This IS the sanctioned "service interface" cross-module call the
+     * architecture boundary rule requires — never replace this with direct
+     * repository access from another module's package.
+     */
+    public record ProjectSnapshot(
+            UUID id,
+            UUID leadUserId,
+            String status,
+            String visibility,
+            int maxTeamSize,
+            int currentTeamSize
+    ) {}
 }
