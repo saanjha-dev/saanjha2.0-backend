@@ -112,6 +112,27 @@ public class ProjectService {
                 .toList();
     }
 
+    /**
+     * Internal cross-module read contract (see {@link ProjectSnapshot}'s Javadoc).
+     * Unlike {@link #getProject}, this does NOT apply visibility filtering —
+     * a calling module validating "can user X apply to project Y" needs the
+     * real current state regardless of whether X could see it via the public
+     * read path. Callers are responsible for their own authorization logic;
+     * this method only answers "what does Project know to be true right now".
+     */
+    @Transactional(readOnly = true)
+    public ProjectSnapshot getSnapshot(UUID projectId) {
+        Project project = getProjectOrThrow(projectId);
+        return new ProjectSnapshot(
+                project.getId(),
+                project.getLeadUserId(),
+                project.getStatus().name(),
+                project.getVisibility(),
+                project.getMaxTeamSize(),
+                project.getCurrentTeamSize()
+        );
+    }
+
     // ========================================================================
     // SCOPE MUTATION
     // ========================================================================

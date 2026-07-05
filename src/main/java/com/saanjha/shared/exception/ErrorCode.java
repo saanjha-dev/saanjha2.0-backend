@@ -42,6 +42,8 @@ public enum ErrorCode {
     ALREADY_EXISTS(HttpStatus.CONFLICT, "The resource you are trying to create already exists."),
     STATE_TRANSITION_FAILED(HttpStatus.CONFLICT, "The requested action is not valid for the resource's current state."),
     PROJECT_READ_ONLY(HttpStatus.CONFLICT, "This project is completed or archived and can no longer be modified."),
+    DUPLICATE_APP(HttpStatus.CONFLICT, "You already have an active or recent application to this project."),
+    PROJECT_NOT_ACCEPTING_APPLICATIONS(HttpStatus.CONFLICT, "This project is not currently open for applications."),
 
     // ========================================================================
     // 413 & 415: FILE UPLOADS & MEDIA (CLOUDINARY)
