@@ -40,7 +40,7 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
-    locations: classpath:db/migration/auth_,classpath:db/migration/usr_,classpath:db/migration/prj_,classpath:db/migration/app_
+    locations: classpath:db/migration/auth_,classpath:db/migration/usr_,classpath:db/migration/prj_,classpath:db/migration/app_,classpath:db/migration/tem_
     out-of-order: true # Allows multiple developers to merge migration scripts concurrently without breaking the version chain
     clean-on-validation-error: true # Local dev only: Self-heals the DB if schemas mismatch #Danger in prod
 
