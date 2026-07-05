@@ -134,6 +134,30 @@ public class ProjectService {
     }
 
     // ========================================================================
+    // TEAM-FACING SYNC (Project's half of the contract described in the Team
+    // module's architecture spec, Section 10/11: Team is authoritative for
+    // leadership and roster size; Project keeps a synced read cache so every
+    // existing @PreAuthorize expression in THIS module and the Application
+    // module keeps working unchanged. Never called by Team synchronously —
+    // only from this module's own event listener. See ProjectTeamEventListener.
+    // ========================================================================
+
+    @Transactional
+    public void syncLeadership(UUID projectId, UUID newLeadUserId) {
+        Project project = getProjectOrThrow(projectId);
+        project.setLeadUserId(newLeadUserId);
+        projectRepository.save(project);
+    }
+
+    @Transactional
+    public void syncTeamSize(UUID projectId, int currentTeamSize) {
+        Project project = getProjectOrThrow(projectId);
+        // Idempotent overwrite, not a delta — see TeamEvents' Javadoc on why.
+        project.setCurrentTeamSize(Math.max(currentTeamSize, 1));
+        projectRepository.save(project);
+    }
+
+    // ========================================================================
     // SCOPE MUTATION
     // ========================================================================
 
