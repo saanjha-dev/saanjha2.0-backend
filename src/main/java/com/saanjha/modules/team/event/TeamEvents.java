@@ -49,8 +49,17 @@ public final class TeamEvents {
     /** Consumers: Notification, Portfolio (role provenance). */
     public record MemberRoleChangedEvent(UUID teamId, UUID projectId, UUID userId, String fromRole, String toRole, Instant occurredAt) {}
 
-    /** Fired when the owning project reaches COMPLETED/ARCHIVED. Consumers: Chat (archive/close channel), Notification, Portfolio (finalize tenure). */
-    public record TeamArchivedEvent(UUID teamId, UUID projectId, Instant occurredAt) {}
+    /**
+     * FIX (TD20, architecture-review.md §9.4): the roster is in memory at the
+     * exact moment this event used to fire with none of it attached — this
+     * record is the "event enrichment" the module was supposed to apply here
+     * from day one. Deliberately a flat value record (no entity reference),
+     * same constraint as every other event payload in this class.
+     */
+    public record ArchivedMember(UUID userId, String role, String contributionTitle, Instant joinedAt, Instant leftAt, long tenureDays) {}
+
+    /** Fired when the owning project reaches COMPLETED/ARCHIVED. Consumers: Chat (archive/close channel), Notification, Portfolio (finalize tenure — now possible without a cross-schema read, per the roster field). */
+    public record TeamArchivedEvent(UUID teamId, UUID projectId, java.util.List<ArchivedMember> roster, Instant occurredAt) {}
 
     /** Consumers: Chat (pause channel activity), Notification. Reversible — see TeamUnlockedEvent. */
     public record TeamLockedEvent(UUID teamId, UUID projectId, UUID lockedBy, String reason, Instant occurredAt) {}
@@ -58,7 +67,7 @@ public final class TeamEvents {
     public record TeamUnlockedEvent(UUID teamId, UUID projectId, UUID unlockedBy, Instant occurredAt) {}
 
     /** Admin-only, rare. Consumers: Notification (every affected former member), Chat (close channel), Project. */
-    public record TeamDissolvedEvent(UUID teamId, UUID projectId, UUID dissolvedBy, String reason, Instant occurredAt) {}
+    public record TeamDissolvedEvent(UUID teamId, UUID projectId, UUID dissolvedBy, String reason, java.util.List<ArchivedMember> roster, Instant occurredAt) {}
 
     /**
      * The compensating event for the last-slot overbooking race identified in

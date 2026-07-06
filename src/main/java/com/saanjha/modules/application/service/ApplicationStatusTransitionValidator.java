@@ -18,8 +18,8 @@ import java.util.Set;
  * SUBMITTED    -> UNDER_REVIEW, SHORTLISTED, ACCEPTED, REJECTED, WITHDRAWN, EXPIRED
  * UNDER_REVIEW -> SHORTLISTED, ACCEPTED, REJECTED, WITHDRAWN, EXPIRED
  * SHORTLISTED  -> ACCEPTED, REJECTED, WITHDRAWN, EXPIRED
- * ACCEPTED     -> (terminal)
- * REJECTED     -> UNDER_REVIEW   (the one documented "Reopen" exception)
+ * ACCEPTED     -> UNDER_REVIEW   (system-only "seat lost" exception, see below)
+ * REJECTED     -> UNDER_REVIEW   (the one documented, user-facing "Reopen" exception)
  * WITHDRAWN    -> (terminal)
  * EXPIRED      -> (terminal)
  * </pre>
@@ -31,6 +31,17 @@ import java.util.Set;
  * only the scheduled sweep drives one to EXPIRED. That actor-level policy
  * lives in {@code ApplicationService}, which is a separate concern from
  * state-machine legality.
+ *
+ * FIX (TD19, architecture-review.md §9.2): ACCEPTED -> UNDER_REVIEW was added
+ * as a second exception, distinct from the REJECTED -> UNDER_REVIEW "Reopen"
+ * a Lead can trigger via the API. This one is SYSTEM-ONLY, triggered
+ * exclusively by {@code ApplicationService.reopenAfterSeatLost}, itself
+ * invoked only by the listener reacting to Team's
+ * {@code MembershipCreationRejectedEvent} — never exposed as a callable
+ * endpoint. Before this fix, ACCEPTED was fully terminal, so a "lost the
+ * last-slot race" applicant had no legal path back to reconsideration at
+ * all; their {@code ProjectApplication} row stayed ACCEPTED forever with no
+ * seat — a silent, permanent data-integrity gap.
  */
 public final class ApplicationStatusTransitionValidator {
 
@@ -46,7 +57,7 @@ public final class ApplicationStatusTransitionValidator {
         ALLOWED_TRANSITIONS.put(ApplicationStatus.SHORTLISTED, EnumSet.of(
                 ApplicationStatus.ACCEPTED, ApplicationStatus.REJECTED,
                 ApplicationStatus.WITHDRAWN, ApplicationStatus.EXPIRED));
-        ALLOWED_TRANSITIONS.put(ApplicationStatus.ACCEPTED, EnumSet.noneOf(ApplicationStatus.class));
+        ALLOWED_TRANSITIONS.put(ApplicationStatus.ACCEPTED, EnumSet.of(ApplicationStatus.UNDER_REVIEW));
         ALLOWED_TRANSITIONS.put(ApplicationStatus.REJECTED, EnumSet.of(ApplicationStatus.UNDER_REVIEW));
         ALLOWED_TRANSITIONS.put(ApplicationStatus.WITHDRAWN, EnumSet.noneOf(ApplicationStatus.class));
         ALLOWED_TRANSITIONS.put(ApplicationStatus.EXPIRED, EnumSet.noneOf(ApplicationStatus.class));

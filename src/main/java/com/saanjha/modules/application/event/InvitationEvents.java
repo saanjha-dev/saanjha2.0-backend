@@ -40,4 +40,15 @@ public final class InvitationEvents {
     public record InvitationRevokedEvent(
             UUID invitationId, UUID projectId, UUID invitedUserId, UUID revokedBy, String reason, Instant occurredAt
     ) {}
+
+    /**
+     * FIX (TD19, architecture-review.md §9.2): the compensating outcome for
+     * an accepted invitation that lost a last-slot capacity race in Team.
+     * Consumers: Notification (tell the invitee honestly what happened,
+     * distinct from a plain decline/expiry), the project Lead (prompt to
+     * invite someone else for the now-still-open slot).
+     */
+    public record InvitationSeatLostEvent(
+            UUID invitationId, UUID projectId, UUID invitedUserId, String reason, Instant occurredAt
+    ) {}
 }

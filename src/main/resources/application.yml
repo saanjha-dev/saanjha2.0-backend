@@ -1,6 +1,5 @@
 server:
   port: 8080
-  # Graceful shutdown ensures in-flight transactions complete before the server kills the process
   shutdown: graceful
 
 spring:
@@ -17,32 +16,39 @@ spring:
     driver-class-name: org.postgresql.Driver
     type: com.zaxxer.hikari.HikariDataSource
     hikari:
-      # Enterprise connection pool tuning
       pool-name: SaanjhaHikariPool
       minimum-idle: 2
       maximum-pool-size: 15
-      connection-timeout: 20000 # Drop connection attempts after 20s
-      idle-timeout: 300000      # Close unused connections after 5 mins
-      max-lifetime: 1200000     # Retire connections after 20 mins to prevent DB-side closure exceptions
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 1200000
 
   jpa:
-    # Use 'update' for initial rapid local dev, switch to 'validate' for Production
+    # FIX (TD6/S4): 'validate' is now the repo-wide default in every profile.
+    # Flyway is the single source of truth for schema shape, per MES Part 1
+    # ("One Flyway-managed schema per module"). Hibernate auto-DDL running
+    # alongside Flyway silently drifts a developer's local DB from what
+    # `flyway migrate` alone would produce — 'update' is now opt-in, in
+    # application-dev.yml only, never the shared default.
     hibernate:
-      ddl-auto: update
-    open-in-view: false # CRITICAL: Disabling this prevents hidden memory leaks and N+1 query performance hits
-    show-sql: true
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
     properties:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        generate_statistics: false # Set to true only when profiling slow queries
+        generate_statistics: false
 
   flyway:
     enabled: true
     baseline-on-migrate: true
     locations: classpath:db/migration/auth_,classpath:db/migration/usr_,classpath:db/migration/prj_,classpath:db/migration/app_,classpath:db/migration/tem_
-    out-of-order: true # Allows multiple developers to merge migration scripts concurrently without breaking the version chain
-    clean-on-validation-error: true # Local dev only: Self-heals the DB if schemas mismatch #Danger in prod
+    # FIX (TD7/S5): clean-on-validation-error and out-of-order are no longer
+    # set here. Both default to Flyway's own safe defaults (false) unless a
+    # profile explicitly opts in — see application-dev.yml. Neither should
+    # ever be reachable outside a disposable local sandbox; the previous
+    # single-file config made both reachable everywhere, including prod.
 
   data:
     redis:
@@ -67,8 +73,9 @@ spring:
           initial-interval: 2000
           max-attempts: 3
           multiplier: 2.0
+
   mail:
-    host: smtp.gmail.com # Or your provider
+    host: smtp.gmail.com
     port: 587
     username: ${MAIL_ID}
     password: ${MAIL_PASSWORD}
@@ -81,29 +88,36 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: 5MB    # Maximum size for a single file
-      max-request-size: 5MB # Maximum size for a single request
+      max-file-size: 5MB
+      max-request-size: 5MB
 
 # ---------------------------------------------------------------------------
 # CUSTOM APPLICATION PROPERTIES
 # ---------------------------------------------------------------------------
 app:
   jwt:
-    # In production, inject this via environment variables: ${JWT_SECRET}
-    secret: ${JWT_SECRET}
-    expiration-ms: 900000         # 15 Minutes
-    refresh-expiration-ms: 604800000 # 7 Days
+    # FIX (TD12/S10): the unused HMAC `secret` key that used to live here has
+    # been deleted. JwtProvider uses only the RS256 key pair (rsa.private-key
+    # / rsa.public-key below) — this was dead configuration that risked being
+    # "helpfully" wired back up by a future contributor who didn't know it
+    # was inert.
+    expiration-ms: 900000
+    refresh-expiration-ms: 604800000
 
   security:
-    # Local Dev: Allow everything across the Wi-Fi network
-    allowed-origins: "*"
-#      - "http://localhost:5173"
-#      - "http://192.168.*" # Supports wildcard subnets for local testing
+    # FIX (TD8/S6): no wildcard default here anymore. Every profile must set
+    # its own explicit allow-list — see application-dev.yml (permissive, for
+    # local network testing only) and application-prod.yml (real origins).
+    # Leaving this unset in the base file makes "did you configure this for
+    # your environment" a startup-time question instead of a silent wildcard.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
     allow-credentials: true
+
   cloudinary:
-    cloud-name: ${CLOUD_NAME} # Replace with your Cloudinary Cloud Name
-    api-key: ${CLOUD_API_KEY}       # Replace with your API Key
+    cloud-name: ${CLOUD_NAME}
+    api-key: ${CLOUD_API_KEY}
     api-secret: ${CLOUD_API_SECRET}
+
 rsa:
   private-key: classpath:keys/private.pem
   public-key: classpath:keys/public.pem

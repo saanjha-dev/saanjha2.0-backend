@@ -23,6 +23,14 @@ import java.util.UUID;
  * leadership here means checking Team's own table, not delegating to
  * Project's cache, which could theoretically be one event-processing tick
  * stale immediately after a transfer.
+ *
+ * FIX (TD18/S12): every read endpoint in TeamController previously authorized
+ * on the blanket {@code team:participate} permission — held by every
+ * ROLE_USER — with no team-membership check at all, despite {@link #isMember}
+ * already existing. {@link #isVisibleTo} and {@link #isMemberOfProjectsTeam}
+ * are added here specifically to close that gap. See TeamService's javadoc
+ * on {@code isPubliclyVisible} for why the fix is a two-tier visibility
+ * check rather than a blanket {@code isMember}-everywhere clamp.
  */
 @Component("teamGuard")
 @RequiredArgsConstructor
@@ -32,6 +40,7 @@ public class TeamSecurityGuard {
 
     private final TeamRepository teamRepository;
     private final MembershipRepository membershipRepository;
+    private final TeamService teamService;
 
     /** True if the given user holds the ACTIVE Lead membership on this team. */
     public boolean isLeadOfTeam(UUID teamId, String userIdText) {
@@ -64,6 +73,41 @@ public class TeamSecurityGuard {
             return false;
         }
         return membershipRepository.findByTeam_IdAndUserIdAndStatusIn(teamId, userId, LIVE_STATUSES).isPresent();
+    }
+
+    /** True if the given user holds any live membership on the team belonging to this project (no teamId in hand yet). */
+    public boolean isMemberOfProjectsTeam(UUID projectId, String userIdText) {
+        if (projectId == null || userIdText == null) {
+            return false;
+        }
+        return teamRepository.findByProjectId(projectId)
+                .map(Team::getId)
+                .map(teamId -> isMember(teamId, userIdText))
+                .orElse(false);
+    }
+
+    /**
+     * True if this user should be able to view the team's roster-level
+     * information: either they're a live member, or the team's own
+     * {@code visibility} setting is PUBLIC. Deliberately NOT used for
+     * sensitive endpoints (history, metrics, removal reasons) — see
+     * TeamController's javadoc on the two-tier read authorization split.
+     */
+    public boolean isVisibleTo(UUID teamId, String userIdText) {
+        if (teamId == null || userIdText == null) {
+            return false;
+        }
+        return isMember(teamId, userIdText) || teamService.isPubliclyVisible(teamId);
+    }
+
+    public boolean isProjectsTeamVisibleTo(UUID projectId, String userIdText) {
+        if (projectId == null || userIdText == null) {
+            return false;
+        }
+        return teamRepository.findByProjectId(projectId)
+                .map(Team::getId)
+                .map(teamId -> isVisibleTo(teamId, userIdText))
+                .orElse(false);
     }
 
     /** True if the given user is the specific member the request targets (e.g. leaving their own seat). */
