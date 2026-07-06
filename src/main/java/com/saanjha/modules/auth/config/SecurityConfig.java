@@ -56,9 +56,37 @@ public class SecurityConfig {
                                 "/v1/auth/resend-verification",
                                 "/v1/auth/forgot-password",
                                 "/v1/auth/reset-password",
-                                "/v1/auth/verify-reset-otp",
-                                "/v1/users/**"
+                                "/v1/auth/verify-reset-otp"
                         ).permitAll()
+                        // FIX (TD5/S2, architecture-review.md §3): this used to be a blanket
+                        // "/v1/users/**" permitAll() covering all 13 endpoints under that
+                        // prefix, 11 of which require authentication and were protected only
+                        // by a service-layer convention (SecurityUtils.getCurrentUserId()
+                        // throwing), not by the filter chain itself — meaning every future
+                        // endpoint added under this prefix silently inherited an insecure
+                        // default unless someone remembered to lock it down individually.
+                        // Scoped now to exactly the two routes UserController actually
+                        // intends to be public, both GET, both read-only.
+                        // FIX (TD5/S2, architecture-review.md §3): this used to be a blanket
+                        // "/v1/users/**" permitAll() covering all 13 endpoints under that
+                        // prefix, 11 of which require authentication and were protected only
+                        // by a service-layer convention (SecurityUtils.getCurrentUserId()
+                        // throwing), not by the filter chain itself — meaning every future
+                        // endpoint added under this prefix silently inherited an insecure
+                        // default unless someone remembered to lock it down individually.
+                        // Scoped now to exactly the two routes UserController actually
+                        // intends to be public, both GET, both read-only.
+                        //
+                        // ORDERING NOTE: Spring Security evaluates these rules in
+                        // declaration order and stops at the first match. "/v1/users/me"
+                        // and "/v1/users/{userId}" are the same single-path-segment shape
+                        // (GET /v1/users/me literally matches the {userId} pattern too), so
+                        // the authenticated-only "/me" rule below MUST be declared before
+                        // the permitAll "{userId}" pattern, or "me" would incorrectly become
+                        // publicly readable through the general pattern.
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/users/me").authenticated()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/users/{userId}").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/users/handle/**").permitAll()
                         .requestMatchers("/actuator/**", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
                         // Public read access to project listings/detail (Security Matrix: GUEST can "View public projects").
                         // Visibility rules for DRAFT/ARCHIVED are still enforced in ProjectService, not here.

@@ -8,6 +8,7 @@ import com.saanjha.modules.auth.service.TokenRotationService;
 import com.saanjha.shared.api.ApiEnvelope;
 import com.saanjha.shared.exception.AppException;
 import com.saanjha.shared.exception.ErrorCode;
+import com.saanjha.shared.idempotency.Idempotent;
 import com.saanjha.shared.ratelimit.RateLimit;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -42,8 +43,9 @@ public class AuthController {
     // ========================================================================
 
     @PostMapping("/register")
+    @Idempotent(action = "register")
     @RateLimit(action = "register", baseLimit = 3, baseTimeSeconds = 300) // Stricter: 3 attempts per 5 mins
-    @Operation(summary = "Register a new user", description = "Creates identity and dispatches async email OTP.")
+    @Operation(summary = "Register a new user", description = "Creates identity and dispatches async email OTP. Requires an Idempotency-Key header.")
     public ResponseEntity<ApiEnvelope<String>> register(@Valid @RequestBody RegisterRequest request) {
         authService.register(request);
         return ResponseEntity.ok(ApiEnvelope.success("Registration successful. Please check your email for the verification code."));

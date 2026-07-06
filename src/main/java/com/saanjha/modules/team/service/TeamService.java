@@ -178,26 +178,39 @@ public class TeamService {
             return; // Already terminal — safe no-op.
         }
 
-        archiveAllLiveMemberships(team, MembershipHistory.SYSTEM_ACTOR_ID, "Project reached a terminal state.");
+        List<ArchivedMember> roster = archiveAllLiveMemberships(team, MembershipHistory.SYSTEM_ACTOR_ID, "Project reached a terminal state.");
 
         team.setStatus(TeamStatus.ARCHIVED);
         team.setArchivedAt(Instant.now());
         teamRepository.save(team);
 
-        eventPublisher.publishEvent(new TeamArchivedEvent(team.getId(), projectId, Instant.now()));
+        // FIX (TD20, architecture-review.md §9.4): TeamArchivedEvent previously
+        // fired with no roster, even though every membership row had already
+        // been flipped to ARCHIVED in this same transaction and the full list
+        // was in memory a moment earlier. Portfolio (once built) needs this to
+        // learn a completed project's roster without a cross-schema read into
+        // tem.tem_memberships — this is that event-enrichment-chaining pattern,
+        // applied where it was originally supposed to be.
+        eventPublisher.publishEvent(new TeamArchivedEvent(team.getId(), projectId, roster, Instant.now()));
     }
 
-    private void archiveAllLiveMemberships(Team team, UUID actorId, String reason) {
+    /** @return the roster that was live immediately before this call, now archived — used to enrich the outbound event (TD20). */
+    private List<ArchivedMember> archiveAllLiveMemberships(Team team, UUID actorId, String reason) {
         List<Membership> live = membershipRepository.findByTeam_IdAndStatusIn(team.getId(), LIVE_STATUSES);
+        List<ArchivedMember> roster = new java.util.ArrayList<>(live.size());
         for (Membership membership : live) {
             MembershipStatus from = membership.getStatus();
+            long tenure = tenureDays(membership);
+            roster.add(new ArchivedMember(membership.getUserId(), membership.getRole().name(),
+                    membership.getContributionTitle(), membership.getJoinedAt(), Instant.now(), tenure));
             membership.setStatus(MembershipStatus.ARCHIVED);
-            team.recordCompletedTenure(tenureDays(membership));
+            team.recordCompletedTenure(tenure);
             membershipRepository.save(membership);
             historyRepository.save(MembershipHistory.statusChange(
                     team.getId(), membership.getId(), membership.getUserId(), EventType.ARCHIVED_WITH_TEAM, from, MembershipStatus.ARCHIVED, actorId, reason));
         }
         team.setCurrentMemberCount(0);
+        return roster;
     }
 
     // ========================================================================
@@ -380,14 +393,13 @@ public class TeamService {
         Team team = lockTeamOrThrow(teamId);
         TeamStatusTransitionValidator.assertLegal(team.getStatus(), TeamStatus.DISSOLVED);
 
-        archiveAllLiveMemberships(team, actingUserId, "Team dissolved: " + reason);
-
+        List<ArchivedMember> roster = archiveAllLiveMemberships(team, actingUserId, "Team dissolved: " + reason);
         team.setStatus(TeamStatus.DISSOLVED);
         team.setDissolvedAt(Instant.now());
         team.setDissolutionReason(reason);
         team = teamRepository.save(team);
 
-        eventPublisher.publishEvent(new TeamDissolvedEvent(teamId, team.getProjectId(), actingUserId, reason, Instant.now()));
+        eventPublisher.publishEvent(new TeamDissolvedEvent(teamId, team.getProjectId(), actingUserId, reason, roster, Instant.now()));
         return mapToResponse(team);
     }
 
@@ -444,6 +456,23 @@ public class TeamService {
         return historyRepository.findByMembershipIdOrderByOccurredAtAsc(membershipId).stream()
                 .map(this::mapHistoryToResponse)
                 .toList();
+    }
+
+    /**
+     * FIX (TD18/S12): backs {@code TeamSecurityGuard.isVisibleTo}. Previously
+     * TeamSettings.visibility was stored and returned in TeamResponse but
+     * never read by any authorization check — decorative, per
+     * architecture-review.md §9.3's explicit callout. This makes it do
+     * something: a PUBLIC-visibility team's roster-level information is
+     * viewable by any authenticated user, not just members. Sensitive
+     * endpoints (history, metrics, removal reasons) deliberately do NOT use
+     * this check — see TeamController's javadoc for the two-tier split.
+     */
+    @Transactional(readOnly = true)
+    public boolean isPubliclyVisible(UUID teamId) {
+        return teamRepository.findById(teamId)
+                .map(team -> readSettings(team.getSettingsJson()).visibility() == TeamSettings.RosterVisibility.PUBLIC)
+                .orElse(false);
     }
 
     @Transactional(readOnly = true)

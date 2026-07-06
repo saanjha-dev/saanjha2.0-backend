@@ -55,9 +55,16 @@ public class UserController {
 
     @GetMapping("/{userId}")
     @RateLimit(action = "get-public-profile", baseLimit = 30)
-    @Operation(summary = "Get Public Profile", description = "Fetches a user's profile. Strictly enforces visibility preferences (Public, Private, Connections Only).")
+    @Operation(summary = "Get Public Profile", description = "Fetches a user's profile. Strictly enforces visibility preferences (Public, Private, Connections Only). Viewable anonymously, per this route's permitAll() SecurityConfig entry.")
     public ResponseEntity<ApiEnvelope<PublicProfileResponse>> getPublicProfile(@PathVariable UUID userId) {
-        PublicProfileResponse response = profileService.getPublicProfile(userId, SecurityUtils.getCurrentUserId());
+        // FIX (S3, architecture-review.md §3): this route is permitAll() in
+        // SecurityConfig specifically so an anonymous recruiter persona can
+        // view it, but it previously called the strict getCurrentUserId(),
+        // which throws for anonymous callers — silently 401'ing the exact
+        // persona the route exists for. getCurrentUserIdOrNull() returns null
+        // for an anonymous caller instead, which profileService.getPublicProfile
+        // already treats as "no viewer" for its own visibility-preference logic.
+        PublicProfileResponse response = profileService.getPublicProfile(userId, SecurityUtils.getCurrentUserIdOrNull());
         return ResponseEntity.ok(ApiEnvelope.success(response));
     }
 
