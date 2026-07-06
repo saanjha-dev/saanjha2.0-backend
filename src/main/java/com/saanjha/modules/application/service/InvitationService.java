@@ -160,6 +160,33 @@ public class InvitationService {
         eventPublisher.publishEvent(new InvitationExpiredEvent(invitationId, invitation.getProjectId(), invitation.getInvitedUserId(), Instant.now()));
     }
 
+    /**
+     * FIX (TD19, architecture-review.md §9.2): compensating action for the
+     * last-slot overbooking race, called exclusively by the listener
+     * reacting to Team's {@code MembershipCreationRejectedEvent} — never
+     * exposed via any controller endpoint. See {@code InvitationStatus}'s
+     * javadoc for why this is a distinct terminal status (SEAT_LOST) rather
+     * than reopening back to SENT the way Application reopens to
+     * UNDER_REVIEW: an accepted invitation has no "review queue" to return
+     * to, and pretending it does would misrepresent what actually happened.
+     *
+     * Idempotent: if the invitation has already moved off ACCEPTED (e.g. a
+     * duplicate event redelivery), this is a silent no-op.
+     */
+    @Transactional
+    public void markSeatLost(UUID invitationId, String reason) {
+        Invitation invitation = invitationRepository.findWithLockById(invitationId)
+                .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "Invitation not found."));
+
+        if (invitation.getStatus() != InvitationStatus.ACCEPTED) {
+            return; // Not in the state this compensates for anymore — nothing to do.
+        }
+
+        invitation.setStatus(InvitationStatus.SEAT_LOST);
+        invitationRepository.save(invitation);
+        eventPublisher.publishEvent(new InvitationSeatLostEvent(invitationId, invitation.getProjectId(), invitation.getInvitedUserId(), reason, Instant.now()));
+    }
+
     // ========================================================================
     // HELPERS
     // ========================================================================

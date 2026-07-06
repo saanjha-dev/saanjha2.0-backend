@@ -35,14 +35,11 @@ public class TokenRotationService {
     private final AuthSessionRepository sessionRepository;
     private final AuthUserRepository userRepository;
     private final JwtProvider jwtProvider;
-    private final EventPublisherService eventPublisher; // The custom wrapper we made earlier
+    private final EventPublisherService eventPublisher;
 
-    @Value("${app.jwt.refresh-expiration-ms:604800000}") // Default 7 Days
+    @Value("${app.jwt.refresh-expiration-ms:604800000}")
     private long refreshExpirationMs;
 
-    /**
-     * Issues a brand new refresh token family for a new login.
-     */
     @Transactional
     public AuthTokens createTokenFamily(AuthSession session, AuthUser user) {
         String rawRefreshToken = UUID.randomUUID().toString();
@@ -61,13 +58,21 @@ public class TokenRotationService {
     }
 
     /**
-     * The core rotation logic. Validates the old token, destroys it, and issues a new pair.
+     * FIX (TD11, architecture-review.md §7 item 2): the token read is now a
+     * pessimistic-write-locked query (see {@code RefreshTokenRepository
+     * .findByTokenHashForRotation}), not a plain unlocked read. Two
+     * near-simultaneous rotate() calls against the same refresh token now
+     * fully serialize on this row: the first to acquire the lock proceeds
+     * through the reuse check, marks the token used, and commits (releasing
+     * the lock); the second then acquires the lock, re-reads inside its own
+     * transaction, and correctly observes {@code used = true} — triggering
+     * genuine reuse detection instead of a race where both could succeed.
      */
     @Transactional
     public AuthTokens rotate(String rawRefreshToken, String deviceId, String deviceIp) {
         String tokenHash = hashToken(rawRefreshToken);
 
-        RefreshToken oldToken = tokenRepository.findByTokenHash(tokenHash)
+        RefreshToken oldToken = tokenRepository.findByTokenHashForRotation(tokenHash)
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "Invalid refresh token."));
 
         AuthSession session = sessionRepository.findByIdAndActiveTrue(oldToken.getSessionId())
@@ -77,18 +82,14 @@ public class TokenRotationService {
         if (oldToken.isUsed() || oldToken.isRevoked()) {
             log.error("COMPROMISE DETECTED: Attempt to reuse old refresh token for User ID: {}", session.getUserId());
 
-            // 1. Kill the active session
             sessionRepository.deactivateSession(session.getId());
-            // 2. Kill the entire token family
             tokenRepository.revokeAllTokensForSession(session.getId());
-            // 3. Alert the system
             eventPublisher.publish(new SuspiciousActivityDetectedEvent(
                     session.getUserId(), deviceIp, "Refresh Token Reuse", Instant.now().toEpochMilli()));
 
             throw new AppException(ErrorCode.FORBIDDEN, "Security violation detected. All sessions terminated. Please log in again.");
         }
 
-        // Standard validation
         if (oldToken.getExpiresAt().isBefore(Instant.now())) {
             throw new AppException(ErrorCode.UNAUTHORIZED, "Refresh token has expired. Please log in again.");
         }
@@ -96,20 +97,16 @@ public class TokenRotationService {
             throw new AppException(ErrorCode.UNAUTHORIZED, "Device fingerprint mismatch.");
         }
 
-        // 1. Invalidate old token
         oldToken.setUsed(true);
         tokenRepository.save(oldToken);
 
-        // 2. Update Session Activity
         sessionRepository.updateLastActivity(session.getId(), Instant.now());
 
-        // Ensure IP is current
         if (!session.getDeviceIp().equals(deviceIp)) {
             session.setDeviceIp(deviceIp);
             sessionRepository.save(session);
         }
 
-        // 3. Generate New Tokens
         AuthUser user = userRepository.findById(session.getUserId())
                 .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "User not found."));
 
@@ -118,7 +115,7 @@ public class TokenRotationService {
         RefreshToken newToken = new RefreshToken();
         newToken.setTokenHash(hashToken(newRawRefreshToken));
         newToken.setSessionId(session.getId());
-        newToken.setParentTokenId(oldToken.getId()); // Maintain the cryptograhic chain
+        newToken.setParentTokenId(oldToken.getId());
         newToken.setExpiresAt(Instant.now().plusMillis(refreshExpirationMs));
 
         tokenRepository.save(newToken);
@@ -128,10 +125,6 @@ public class TokenRotationService {
         return new AuthTokens(newAccessToken, newRawRefreshToken, jwtProvider.getJwtExpirationMs());
     }
 
-    /**
-     * Securely extracts the Session ID from a raw refresh token.
-     * It hashes the token to prevent raw exposure and looks it up in the database.
-     */
     public UUID extractSessionIdFromToken(String rawRefreshToken) {
         String tokenHash = hashToken(rawRefreshToken);
 
@@ -140,9 +133,7 @@ public class TokenRotationService {
 
         return token.getSessionId();
     }
-    /**
-     * Hashes the raw UUID refresh token using SHA-256 to prevent DB read-compromise.
-     */
+
     private String hashToken(String rawToken) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

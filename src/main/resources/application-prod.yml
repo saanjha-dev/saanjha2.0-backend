@@ -1,0 +1,33 @@
+# ===========================================================================
+# PROD PROFILE — activate with SPRING_PROFILES_ACTIVE=prod
+#
+# Deliberately explicit even where it repeats the base file's default: a
+# reader should never have to check "is this profile relying on the base
+# file being safe" for the settings that caused S4/S5/S6.
+# ===========================================================================
+
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  jpa:
+    hibernate:
+      ddl-auto: validate # Explicit, not just inherited — this is the setting S4 was about.
+    show-sql: false
+
+  flyway:
+    clean-on-validation-error: false
+    out-of-order: false
+
+app:
+  security:
+    # Real allow-list, injected per deployment. No wildcard is valid here —
+    # startup should fail loudly if CORS_ALLOWED_ORIGINS_PROD is unset,
+    # rather than silently falling back to anything permissive.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS_PROD}
+
+management:
+  endpoint:
+    health:
+      show-details: never # Don't leak DB/Redis/RabbitMQ connection detail to an unauthenticated health probe in prod.

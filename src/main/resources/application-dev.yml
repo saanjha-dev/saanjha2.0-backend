@@ -1,0 +1,25 @@
+# ===========================================================================
+# DEV PROFILE — activate with SPRING_PROFILES_ACTIVE=dev
+#
+# This file is the ONLY place clean-on-validation-error, out-of-order, and
+# ddl-auto:update are permitted (TD6/TD7/S4/S5). If you are reading this
+# file to figure out why prod behaves differently: that's the point.
+# ===========================================================================
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  jpa:
+    hibernate:
+      ddl-auto: update # Rapid local iteration only. Never set outside this profile.
+    show-sql: true
+
+  flyway:
+    clean-on-validation-error: true # Self-heals a disposable local DB. Drops every managed schema — local sandbox only.
+    out-of-order: true # Convenience for concurrent local migration authoring.
+
+app:
+  security:
+    allowed-origins: "*" # Local network testing only — never set outside this profile.

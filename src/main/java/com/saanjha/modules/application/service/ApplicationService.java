@@ -209,6 +209,39 @@ public class ApplicationService {
         return mapToResponse(application);
     }
 
+    /**
+     * FIX (TD19, architecture-review.md §9.2): compensating transition for
+     * the last-slot overbooking race. Called exclusively by the listener
+     * reacting to Team's {@code MembershipCreationRejectedEvent} — never
+     * exposed via any controller endpoint (mirrors {@code systemArchive}/
+     * {@code systemExpire}'s internal-only pattern in Project/Application).
+     *
+     * Idempotent by construction: if the application has already moved off
+     * ACCEPTED by the time this runs (e.g. a duplicate event redelivery, or
+     * the applicant already withdrew), this is a silent no-op rather than an
+     * error — duplicate events must never corrupt state.
+     */
+    @Transactional
+    public void reopenAfterSeatLost(UUID applicationId, String reason) {
+        ProjectApplication application = applicationRepository.findWithLockById(applicationId)
+                .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "Application not found."));
+
+        ApplicationStatus from = application.getStatus();
+        if (!ApplicationStatusTransitionValidator.isLegal(from, ApplicationStatus.UNDER_REVIEW)) {
+            return; // Already moved on (withdrawn, re-reviewed, etc.) — nothing to compensate.
+        }
+
+        application.setStatus(ApplicationStatus.UNDER_REVIEW);
+        application.setDecisionReason(null);
+        application = applicationRepository.save(application);
+
+        String note = "Automatically reopened: this applicant's acceptance could not be seated (" + reason + "). "
+                + "Please review and decide again.";
+        statusLogRepository.save(new ApplicationStatusLog(applicationId, from, ApplicationStatus.UNDER_REVIEW, ApplicationStatusLog.SYSTEM_ACTOR_ID, note));
+        noteRepository.save(new ApplicationNote(applicationId, ApplicationStatusLog.SYSTEM_ACTOR_ID, note));
+        eventPublisher.publishEvent(new ApplicationReopenedEvent(applicationId, application.getProjectId(), application.getApplicantId(), ApplicationStatusLog.SYSTEM_ACTOR_ID, Instant.now()));
+    }
+
     @Transactional
     public ApplicationNoteResponse addNote(UUID applicationId, UUID authorId, AddNoteRequest request) {
         getApplicationOrThrow(applicationId); // 404s cleanly if the application doesn't exist
