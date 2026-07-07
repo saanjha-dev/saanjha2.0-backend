@@ -58,7 +58,7 @@ public class SwaggerConfig {
         return GroupedOpenApi.builder()
                 .group("3. Projects")
                 .pathsToMatch("/v1/projects/**")
-                .pathsToExclude("/v1/projects/*/applications/**", "/v1/projects/*/invitations/**", "/v1/projects/*/team")
+                .pathsToExclude("/v1/projects/*/applications/**", "/v1/projects/*/invitations/**", "/v1/projects/*/team", "/v1/projects/*/tasks/**")
                 .build();
     }
 
@@ -83,6 +83,14 @@ public class SwaggerConfig {
         return GroupedOpenApi.builder()
                 .group("6. Teams")
                 .pathsToMatch("/v1/teams/**", "/v1/projects/*/team")
+                .build();
+    }
+
+    @Bean
+    public GroupedOpenApi taskApi() {
+        return GroupedOpenApi.builder()
+                .group("7. Tasks")
+                .pathsToMatch("/v1/tasks/**", "/v1/projects/*/tasks/**")
                 .build();
     }
 }
