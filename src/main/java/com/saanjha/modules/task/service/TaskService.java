@@ -359,7 +359,7 @@ public class TaskService {
                 recordActivity(task.getId(), TaskActivityType.STATUS_CHANGED, actingUserId, "Marked done.");
                 eventPublisher.publishEvent(new TaskCompletedEvent(
                         task.getId(), task.getProjectId(), task.getAssigneeId(), task.getReporterId(),
-                        task.getStoryPoints(), null, task.getEstimatedHours(), task.getActualHours(),
+                        task.getStoryPoints(), task.getPriority().name(), null, task.getEstimatedHours(), task.getActualHours(),
                         actingUserId, now));
             }
             case CANCELLED -> {
