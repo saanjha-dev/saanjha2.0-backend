@@ -40,17 +40,22 @@ public final class TaskEvents {
      * THE Contribution Engine's primary input (MES Section E). Deliberately
      * enriched per this class's own javadoc: {@code complexity} is the
      * task's story points (nullable — not every team uses point estimation,
-     * per the brief's "never force one methodology"), {@code role} is a
-     * placeholder for the assignee's contribution role once Team's
-     * `contributionTitle` is wired through (currently always null — an
-     * honest placeholder, not a silent omission), and {@code reviewedBy}
-     * captures who moved it out of IN_REVIEW, satisfying the Contribution
-     * Engine's "Peer Reviews conducted" (W_r * N_r) term without Contribution
-     * ever needing to query Task's review history itself.
+     * per the brief's "never force one methodology"), {@code priority} was
+     * added after the Contribution module's own scoring engine identified
+     * it as a required input it had no other way to obtain without reading
+     * Task's schema (event-enrichment-chaining, ADR-005, applied to this
+     * module's own event after the fact — exactly the kind of gap that
+     * pattern exists to catch), {@code role} is a placeholder for the
+     * assignee's contribution role once Team's `contributionTitle` is wired
+     * through (currently always null — an honest placeholder, not a silent
+     * omission), and {@code reviewedBy} captures who moved it out of
+     * IN_REVIEW, satisfying the Contribution Engine's "Peer Reviews
+     * conducted" (W_r * N_r) term without Contribution ever needing to
+     * query Task's review history itself.
      */
     public record TaskCompletedEvent(
             UUID taskId, UUID projectId, UUID assigneeId, UUID reporterId,
-            Integer complexity, String role, Double estimatedHours, double actualHours,
+            Integer complexity, String priority, String role, Double estimatedHours, double actualHours,
             UUID reviewedBy, Instant completedAt
     ) {}
 
