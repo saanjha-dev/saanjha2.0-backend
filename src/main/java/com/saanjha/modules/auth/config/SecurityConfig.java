@@ -91,6 +91,15 @@ public class SecurityConfig {
                         // Public read access to project listings/detail (Security Matrix: GUEST can "View public projects").
                         // Visibility rules for DRAFT/ARCHIVED are still enforced in ProjectService, not here.
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/projects/**").permitAll()
+                        // Portfolio: the Verifier/Recruiter persona (MES §0.3) is explicitly meant to browse
+                        // anonymously. Same ordering hazard as "/v1/users/me" above — "/v1/portfolios/me/**"
+                        // is a single-segment shape that the general "/{userId}" pattern would also match, so
+                        // the authenticated "me" rules MUST be declared first. PortfolioService itself still
+                        // enforces PRIVATE/LINK_ONLY visibility for the permitAll routes below — this filter
+                        // chain only controls who reaches the controller at all, not what they're shown.
+                        .requestMatchers("/v1/portfolios/me/**").authenticated()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/portfolios/{userId}").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/portfolios/shared/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

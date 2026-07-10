@@ -44,7 +44,7 @@ public class Team extends BaseAuditEntity {
     private TeamStatus status = TeamStatus.CREATED;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(nullable = false, columnDefinition = "jsonb")
+    @Column(name = "settings", nullable = false, columnDefinition = "jsonb")
     private String settingsJson = "{}";
 
     @Column(name = "current_member_count", nullable = false)
