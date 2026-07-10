@@ -101,4 +101,12 @@ public class SwaggerConfig {
                 .pathsToMatch("/v1/contributions/**", "/v1/projects/*/contributions/**")
                 .build();
     }
+
+    @Bean
+    public GroupedOpenApi portfolioApi() {
+        return GroupedOpenApi.builder()
+                .group("9. Portfolio")
+                .pathsToMatch("/v1/portfolios/**", "/v1/projects/*/portfolios/**")
+                .build();
+    }
 }
