@@ -87,7 +87,7 @@ public class ApplicationService {
         application.setExpiresAt(Instant.now().plus(APPLICATION_EXPIRY_DAYS, ChronoUnit.DAYS));
 
         application = applicationRepository.save(application);
-        eventPublisher.publishEvent(new ApplicationSubmittedEvent(application.getId(), projectId, applicantId, Instant.now()));
+        eventPublisher.publishEvent(new ApplicationSubmittedEvent(application.getId(), projectId, applicantId, project.leadUserId(), Instant.now()));
 
         return mapToResponse(application);
     }
@@ -156,7 +156,8 @@ public class ApplicationService {
         application = applicationRepository.save(application);
 
         statusLogRepository.save(new ApplicationStatusLog(applicationId, from, ApplicationStatus.WITHDRAWN, applicantId, null));
-        eventPublisher.publishEvent(new ApplicationWithdrawnEvent(applicationId, application.getProjectId(), applicantId, Instant.now()));
+        UUID withdrawnProjectLeadId = projectService.getSnapshot(application.getProjectId()).leadUserId();
+        eventPublisher.publishEvent(new ApplicationWithdrawnEvent(applicationId, application.getProjectId(), applicantId, withdrawnProjectLeadId, Instant.now()));
 
         return mapToResponse(application);
     }
