@@ -110,7 +110,7 @@ public class InvitationService {
 
         // Deliberately does NOT create a ProjectApplication row or a Team member —
         // Team is the sole owner of membership creation, reacting to this event.
-        eventPublisher.publishEvent(new InvitationAcceptedEvent(invitationId, invitation.getProjectId(), invitation.getInvitedUserId(), Instant.now()));
+        eventPublisher.publishEvent(new InvitationAcceptedEvent(invitationId, invitation.getProjectId(), invitation.getInvitedUserId(), invitation.getInvitedBy(), Instant.now()));
 
         return mapToResponse(invitation);
     }
@@ -123,7 +123,7 @@ public class InvitationService {
         invitation.setRespondedAt(Instant.now());
         invitation = invitationRepository.save(invitation);
 
-        eventPublisher.publishEvent(new InvitationDeclinedEvent(invitationId, invitation.getProjectId(), invitation.getInvitedUserId(), request.reason(), Instant.now()));
+        eventPublisher.publishEvent(new InvitationDeclinedEvent(invitationId, invitation.getProjectId(), invitation.getInvitedUserId(), invitation.getInvitedBy(), request.reason(), Instant.now()));
 
         return mapToResponse(invitation);
     }
@@ -184,7 +184,7 @@ public class InvitationService {
 
         invitation.setStatus(InvitationStatus.SEAT_LOST);
         invitationRepository.save(invitation);
-        eventPublisher.publishEvent(new InvitationSeatLostEvent(invitationId, invitation.getProjectId(), invitation.getInvitedUserId(), reason, Instant.now()));
+        eventPublisher.publishEvent(new InvitationSeatLostEvent(invitationId, invitation.getProjectId(), invitation.getInvitedUserId(), invitation.getInvitedBy(), reason, Instant.now()));
     }
 
     // ========================================================================

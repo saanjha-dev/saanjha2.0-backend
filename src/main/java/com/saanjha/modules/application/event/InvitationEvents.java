@@ -21,14 +21,18 @@ public final class InvitationEvents {
      * Consumers: Team (creates the membership — exactly the same downstream
      * effect as ApplicationAcceptedEvent, just from the other entry point),
      * Notification (confirms to the Lead).
+     * NOTE (Notification module build): {@code leadUserId} added - sourced from
+     * {@code Invitation.invitedBy}, which was already being populated at send time
+     * and requires no new lookup.
      */
     public record InvitationAcceptedEvent(
-            UUID invitationId, UUID projectId, UUID invitedUserId, Instant occurredAt
+            UUID invitationId, UUID projectId, UUID invitedUserId, UUID leadUserId, Instant occurredAt
     ) {}
 
-    /** Consumers: Notification (informs the Lead so they can invite someone else). */
+    /** Consumers: Notification (informs the Lead so they can invite someone else).
+     * NOTE (Notification module build): {@code leadUserId} added, same reasoning as {@link InvitationAcceptedEvent}. */
     public record InvitationDeclinedEvent(
-            UUID invitationId, UUID projectId, UUID invitedUserId, String reason, Instant occurredAt
+            UUID invitationId, UUID projectId, UUID invitedUserId, UUID leadUserId, String reason, Instant occurredAt
     ) {}
 
     /** Fired by the expiration sweep. Consumers: Notification. */
@@ -49,6 +53,6 @@ public final class InvitationEvents {
      * invite someone else for the now-still-open slot).
      */
     public record InvitationSeatLostEvent(
-            UUID invitationId, UUID projectId, UUID invitedUserId, String reason, Instant occurredAt
+            UUID invitationId, UUID projectId, UUID invitedUserId, UUID leadUserId, String reason, Instant occurredAt
     ) {}
 }

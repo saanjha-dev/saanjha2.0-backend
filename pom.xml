@@ -110,11 +110,77 @@
         </dependency>
 
         <dependency><groupId>com.bucket4j</groupId><artifactId>bucket4j-core</artifactId><version>8.10.1</version></dependency>
+
+        <!-- Notification module: observability (Section "OBSERVABILITY" of the module brief).
+             `management.*` keys already existed in application.yml before this module was built,
+             but no dependency actually backed them - /actuator/** was permitAll in SecurityConfig
+             yet unreachable. Adding this closes that latent gap as a side effect. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <!-- Notification module: Circuit Breaker / Retry / Bulkhead / RateLimiter for every
+             outbound provider call (Section "RESILIENCY" of the module brief). Applied only in
+             the notification module's provider layer - no other module depends on this. -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+            <version>2.2.0</version>
+        </dependency>
+
+        <!-- NotificationHub SDK (see /mnt/user-data ROLE brief + sumitshresht/notificationhub-java).
+             NOTE: this coordinate matches the SDK's own README but the artifact is not actually
+             published on Maven Central as reviewed - see the final report's build note. The
+             adapter code in this module (NotificationHubProvider) is written and reviewed against
+             the exact source of the cloned SDK repo, not assumed from the README alone. -->
+        <dependency>
+            <groupId>io.github.sumitshresht</groupId>
+            <artifactId>notificationhub-java-sdk</artifactId>
+            <version>1.0.1</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-circuitbreaker</artifactId>
+            <version>2.2.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-retry</artifactId>
+            <version>2.2.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-timelimiter</artifactId>
+            <version>2.2.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-all</artifactId>
+            <version>2.2.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.vavr</groupId>
+            <artifactId>vavr</artifactId>
+            <version>0.10.4</version>
+        </dependency>
+
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-testcontainers</artifactId>

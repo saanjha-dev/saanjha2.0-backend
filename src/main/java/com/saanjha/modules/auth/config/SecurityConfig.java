@@ -100,6 +100,14 @@ public class SecurityConfig {
                         .requestMatchers("/v1/portfolios/me/**").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/portfolios/{userId}").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/portfolios/shared/**").permitAll()
+                        // Notification: NotificationHub (the external provider) calls this to report
+                        // delivery-status callbacks - there is no JWT to present, so this can't be
+                        // "authenticated()". ProviderWebhookController verifies the HMAC signature on
+                        // every request itself before touching any data - permitAll here only means
+                        // "reaches the controller", not "trusted without verification" (same pattern
+                        // as every other permitAll route in this file leaving further checks to the
+                        // service layer, e.g. Portfolio's visibility gate above).
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/v1/notifications/webhooks/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
