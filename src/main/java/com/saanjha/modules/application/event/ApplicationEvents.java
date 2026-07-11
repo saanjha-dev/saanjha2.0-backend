@@ -14,14 +14,25 @@ public final class ApplicationEvents {
     private ApplicationEvents() {
     }
 
-    /** Consumers: Notification (alerts the project Lead). Mirrors the master spec's ApplicationSubmitted. */
+    /**
+     * Consumers: Notification (alerts the project Lead). Mirrors the master spec's ApplicationSubmitted.
+     * NOTE (Notification module build): {@code leadUserId} was added to this payload - it wasn't
+     * previously carried even though this javadoc already promised a Lead-facing notification.
+     * {@code ApplicationService.submitApplication} already holds the project's {@code ProjectSnapshot}
+     * at the point this is published, so this is a zero-extra-lookup addition, not a new
+     * cross-module read.
+     */
     public record ApplicationSubmittedEvent(
-            UUID applicationId, UUID projectId, UUID applicantId, Instant occurredAt
+            UUID applicationId, UUID projectId, UUID applicantId, UUID leadUserId, Instant occurredAt
     ) {}
 
-    /** Consumers: Notification (informs the Lead the applicant pulled out). */
+    /**
+     * Consumers: Notification (informs the Lead the applicant pulled out).
+     * NOTE (Notification module build): {@code leadUserId} added, same reasoning as
+     * {@link ApplicationSubmittedEvent}.
+     */
     public record ApplicationWithdrawnEvent(
-            UUID applicationId, UUID projectId, UUID applicantId, Instant occurredAt
+            UUID applicationId, UUID projectId, UUID applicantId, UUID leadUserId, Instant occurredAt
     ) {}
 
     /** Consumers: Notification (a soft positive signal to the applicant). */
