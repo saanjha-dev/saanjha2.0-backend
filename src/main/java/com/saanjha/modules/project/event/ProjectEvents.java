@@ -75,4 +75,44 @@ public final class ProjectEvents {
             String reason,
             Instant occurredAt
     ) {}
+
+    /**
+     * Read-model synchronization event for Discovery. Deliberately separate
+     * from {@link ProjectPublishedEvent}: that event carries one specific
+     * business meaning ("just started recruiting") with a payload frozen to
+     * that moment, whereas Discovery needs an evolving read model kept in
+     * sync with every field it filters/ranks/searches on — enriching
+     * ProjectPublishedEvent would conflate the two and force every other
+     * existing consumer of that event to ignore fields it doesn't care
+     * about. This event carries only data Project already owns (no reach
+     * into Team/Contribution/Portfolio), so it doesn't violate the module
+     * boundary rule.
+     *
+     * Fired on every legal state transition (alongside the other
+     * per-transition events) and on scope/requirement/tag mutations while
+     * the project is RECRUITING or IN_PROGRESS — the two states where a
+     * Discovery-side listing can meaningfully still change under a user's
+     * feet. Not fired for DRAFT (never indexed) or for edits after
+     * COMPLETED/ARCHIVED (the project is already read-only; the terminal
+     * transition's own event is Discovery's cue to freeze/de-index it).
+     *
+     * This is a narrow, deliberate, documented exception to this module's
+     * "no events for CRUD" rule: it is not a general business event, it is a
+     * dedicated read-model sync channel with exactly one intended consumer.
+     */
+    public record ProjectDiscoveryUpdatedEvent(
+            UUID projectId,
+            UUID leadUserId,
+            String title,
+            String slug,
+            String descriptionExcerpt,
+            String category,
+            String visibility,
+            String status,
+            List<String> requiredSkills,
+            List<String> tags,
+            int maxTeamSize,
+            int currentTeamSize,
+            Instant occurredAt
+    ) {}
 }
