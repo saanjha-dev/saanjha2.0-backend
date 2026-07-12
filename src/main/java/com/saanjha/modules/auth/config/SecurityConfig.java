@@ -116,6 +116,16 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/discovery/search/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/discovery/suggestions").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/discovery/trending/**").permitAll()
+                        // Chat: the STOMP handshake itself carries no JWT the filter chain can see
+                        // (browsers can't set an Authorization header on the WebSocket upgrade
+                        // request) - real authentication happens one layer up, at the STOMP
+                        // CONNECT frame, via ChatChannelInterceptor#preSend, which rejects any
+                        // CONNECT frame without a valid Bearer token before a Principal is ever
+                        // attached to the session. permitAll here only means "the HTTP upgrade
+                        // reaches the WebSocket layer", not "unauthenticated STOMP traffic is
+                        // accepted" - same permitAll-then-service-layer-enforces pattern as every
+                        // other permitAll route in this file.
+                        .requestMatchers("/ws/chat/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
