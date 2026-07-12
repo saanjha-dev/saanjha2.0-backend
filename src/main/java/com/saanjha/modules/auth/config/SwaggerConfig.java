@@ -109,4 +109,20 @@ public class SwaggerConfig {
                 .pathsToMatch("/v1/portfolios/**", "/v1/projects/*/portfolios/**")
                 .build();
     }
+
+    @Bean
+    public GroupedOpenApi notificationApi() {
+        return GroupedOpenApi.builder()
+                .group("10. Notification")
+                .pathsToMatch("/v1/notifications/**", "/v1/projects/*/notifications/**")
+                .build();
+    }
+
+    @Bean
+    public GroupedOpenApi discoveryApi() {
+        return GroupedOpenApi.builder()
+                .group("11. Discovery")
+                .pathsToMatch("/v1/discovery/**", "/v1/projects/*/discovery/**")
+                .build();
+    }
 }

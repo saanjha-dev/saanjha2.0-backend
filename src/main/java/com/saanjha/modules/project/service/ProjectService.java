@@ -188,6 +188,7 @@ public class ProjectService {
         }
 
         project = projectRepository.save(project);
+        publishDiscoverySync(project);
         return mapToResponse(project);
     }
 
@@ -212,6 +213,7 @@ public class ProjectService {
         project.addRequirement(requirement);
 
         project = projectRepository.save(project);
+        publishDiscoverySync(project);
         return mapToResponse(project);
     }
 
@@ -226,6 +228,7 @@ public class ProjectService {
         }
 
         project = projectRepository.save(project);
+        publishDiscoverySync(project);
         return mapToResponse(project);
     }
 
@@ -248,6 +251,7 @@ public class ProjectService {
         project.addTag(tag);
 
         project = projectRepository.save(project);
+        publishDiscoverySync(project);
         return mapToResponse(project);
     }
 
@@ -262,6 +266,7 @@ public class ProjectService {
         }
 
         project = projectRepository.save(project);
+        publishDiscoverySync(project);
         return mapToResponse(project);
     }
 
@@ -316,6 +321,7 @@ public class ProjectService {
                 projectId, currentStatus, ProjectStatus.ARCHIVED, ProjectStatusLog.SYSTEM_ACTOR_ID, reason));
         eventPublisher.publishEvent(new ProjectArchivedEvent(
                 projectId, currentStatus.name(), ProjectStatusLog.SYSTEM_ACTOR_ID, reason, Instant.now()));
+        publishDiscoverySync(project);
     }
 
     // ------------------------------------------------------------------------
@@ -373,6 +379,40 @@ public class ProjectService {
                     new ProjectArchivedEvent(project.getId(), from.name(), actingUserId, reason, now));
             default -> { /* IN_PROGRESS currently has no dedicated event beyond the generic status-changed signal */ }
         }
+
+        publishDiscoverySync(project);
+    }
+
+    // ========================================================================
+    // DISCOVERY READ-MODEL SYNC (see ProjectEvents.ProjectDiscoveryUpdatedEvent)
+    // ========================================================================
+
+    /**
+     * Emits the Discovery read-model sync event when the project is in a
+     * state Discovery actually cares about keeping current (RECRUITING or
+     * IN_PROGRESS). No-op otherwise — DRAFT is never indexed, and terminal
+     * states are covered by the transition event itself, not further edits.
+     */
+    private void publishDiscoverySync(Project project) {
+        if (project.getStatus() != ProjectStatus.RECRUITING && project.getStatus() != ProjectStatus.IN_PROGRESS) {
+            return;
+        }
+
+        List<String> requiredSkills = project.getRequirements().stream()
+                .map(ProjectRequirement::getSkillName)
+                .sorted()
+                .toList();
+        List<String> tags = project.getTags().stream()
+                .map(ProjectTag::getTagName)
+                .sorted()
+                .toList();
+        String excerpt = project.getDescription() == null ? "" :
+                project.getDescription().substring(0, Math.min(500, project.getDescription().length()));
+
+        eventPublisher.publishEvent(new ProjectDiscoveryUpdatedEvent(
+                project.getId(), project.getLeadUserId(), project.getTitle(), project.getSlug(), excerpt,
+                project.getCategory(), project.getVisibility(), project.getStatus().name(),
+                requiredSkills, tags, project.getMaxTeamSize(), project.getCurrentTeamSize(), Instant.now()));
     }
 
     // ========================================================================

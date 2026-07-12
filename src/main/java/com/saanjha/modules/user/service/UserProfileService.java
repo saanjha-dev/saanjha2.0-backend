@@ -239,6 +239,7 @@ public class UserProfileService {
 
         // Announce to the system that the profile changed
         eventPublisher.publishEvent(new ProfileUpdatedEvent(profile.getUserId()));
+        eventPublisher.publishEvent(buildDiscoverySyncEvent(profile));
 
         // If they crossed the threshold for the first time, fire the achievement event
         if (oldScore < COMPLETION_THRESHOLD && newScore >= COMPLETION_THRESHOLD) {
@@ -246,6 +247,24 @@ public class UserProfileService {
         }
 
         return newScore;
+    }
+
+    /** See {@code UserEvents.UserDiscoveryUpdatedEvent}'s Javadoc. */
+    private com.saanjha.modules.user.event.UserEvents.UserDiscoveryUpdatedEvent buildDiscoverySyncEvent(UserProfile profile) {
+        List<com.saanjha.modules.user.event.UserEvents.SkillSignal> skills = profile.getSkills().stream()
+                .map(s -> new com.saanjha.modules.user.event.UserEvents.SkillSignal(s.getSkillName(), s.getSkillLevel(), s.isVerified()))
+                .toList();
+        List<String> interests = profile.getInterests().stream()
+                .map(UserInterest::getInterestName)
+                .toList();
+        String bioExcerpt = profile.getBio() == null ? null :
+                profile.getBio().substring(0, Math.min(300, profile.getBio().length()));
+
+        return new com.saanjha.modules.user.event.UserEvents.UserDiscoveryUpdatedEvent(
+                profile.getUserId(), profile.getDisplayName(), profile.getUniqueHandle(), profile.getHeadline(),
+                bioExcerpt, profile.getLocation(), profile.getExperienceLevel(), skills, interests,
+                profile.getProfileScore(), profile.getProjectsCompleted(), profile.isDeleted(),
+                java.time.Instant.now());
     }
 
     private int getOrCalculateProfileScore(UserProfile profile) {
@@ -306,6 +325,11 @@ public class UserProfileService {
 
         // 3. Publish an event so the Auth module knows to revoke their active JWT sessions
         // eventPublisher.publishEvent(new ProfileDeletedEvent(userId));
+
+        // 4. Tell Discovery to de-index this profile. Deliberately not gated behind the
+        // still-commented-out ProfileDeletedEvent above (a separate, already-documented gap) —
+        // Discovery holding a deleted user's data indefinitely is its own, narrower exposure.
+        eventPublisher.publishEvent(buildDiscoverySyncEvent(profile));
     }
 
     // ========================================================================
