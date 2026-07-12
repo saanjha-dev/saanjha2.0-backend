@@ -61,6 +61,16 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>
+        <!-- Chat module: native STOMP-over-WebSocket transport for message delivery,
+             typing indicators, presence, reactions, and read-receipt fan-out.
+             REST (via spring-boot-starter-web, already present) continues to own
+             history, search, conversation CRUD, settings, pinned messages, and
+             attachment metadata - see chat module brief's "WEBSOCKET" section. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-mail</artifactId>

@@ -125,4 +125,12 @@ public class SwaggerConfig {
                 .pathsToMatch("/v1/discovery/**", "/v1/projects/*/discovery/**")
                 .build();
     }
+
+    @Bean
+    public GroupedOpenApi chatApi() {
+        return GroupedOpenApi.builder()
+                .group("12. Chat")
+                .pathsToMatch("/v1/chats/**", "/v1/projects/*/chats/**")
+                .build();
+    }
 }
