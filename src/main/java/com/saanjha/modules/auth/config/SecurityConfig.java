@@ -108,6 +108,14 @@ public class SecurityConfig {
                         // as every other permitAll route in this file leaving further checks to the
                         // service layer, e.g. Portfolio's visibility gate above).
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/v1/notifications/webhooks/**").permitAll()
+                        // Discovery: search/autocomplete/trending are the platform's public listing surface
+                        // (MES §0.3 — Builder/Lead/Recruiter personas all need to browse without an account),
+                        // same reasoning as Project's and Portfolio's public GET routes above. Personalized
+                        // routes ("/v1/discovery/me/**", recommendations, matching) are deliberately NOT listed
+                        // here, so they fall through to the default authenticated() rule below.
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/discovery/search/**").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/discovery/suggestions").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/discovery/trending/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
