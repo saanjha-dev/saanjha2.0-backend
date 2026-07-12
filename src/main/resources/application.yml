@@ -43,7 +43,7 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
-    locations: classpath:db/migration/auth_,classpath:db/migration/usr_,classpath:db/migration/prj_,classpath:db/migration/app_,classpath:db/migration/tem_,classpath:db/migration/tsk_,classpath:db/migration/con_,classpath:db/migration/ptf_,classpath:db/migration/ntf_,classpath:db/migration/dsc_
+    locations: classpath:db/migration/auth_,classpath:db/migration/usr_,classpath:db/migration/prj_,classpath:db/migration/app_,classpath:db/migration/tem_,classpath:db/migration/tsk_,classpath:db/migration/con_,classpath:db/migration/ptf_,classpath:db/migration/ntf_,classpath:db/migration/dsc_,classpath:db/migration/cht_
     # FIX (TD7/S5): clean-on-validation-error and out-of-order are no longer
     # set here. Both default to Flyway's own safe defaults (false) unless a
     # profile explicitly opts in — see application-dev.yml. Neither should

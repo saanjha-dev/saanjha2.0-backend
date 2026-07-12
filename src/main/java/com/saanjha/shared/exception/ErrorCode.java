@@ -46,6 +46,16 @@ public enum ErrorCode {
     PROJECT_NOT_ACCEPTING_APPLICATIONS(HttpStatus.CONFLICT, "This project is not currently open for applications."),
 
     // ========================================================================
+    // CHAT MODULE
+    // ========================================================================
+    CHAT_NOT_A_MEMBER(HttpStatus.FORBIDDEN, "You are not a member of this conversation."),
+    CHAT_MEMBER_MUTED(HttpStatus.FORBIDDEN, "You are currently muted in this conversation."),
+    CHAT_MEMBER_BLOCKED(HttpStatus.FORBIDDEN, "You have been blocked from this conversation."),
+    CHAT_CONVERSATION_READ_ONLY(HttpStatus.CONFLICT, "This conversation is archived or locked and can no longer accept new messages."),
+    CHAT_MESSAGE_ALREADY_DELETED(HttpStatus.CONFLICT, "This message has already been deleted."),
+    CHAT_THREAD_DEPTH_EXCEEDED(HttpStatus.CONFLICT, "Replies to a reply are not supported; reply to the thread's root message instead."),
+
+    // ========================================================================
     // 413 & 415: FILE UPLOADS & MEDIA (CLOUDINARY)
     // ========================================================================
     PAYLOAD_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "The uploaded file exceeds the maximum allowed size."),
