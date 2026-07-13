@@ -15,7 +15,7 @@ import java.util.UUID;
  * {@code MembershipHistory.SYSTEM_ACTOR_ID} for event-driven actions (e.g. an
  * auto-lock following ProjectArchivedEvent) that have no human actor.
  */
-@Entity
+@Entity(name = "ChatModerationAction")
 @Table(name = "cht_moderation_actions", schema = "cht")
 @Getter
 @Setter

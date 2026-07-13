@@ -126,6 +126,12 @@ public class SecurityConfig {
                         // accepted" - same permitAll-then-service-layer-enforces pattern as every
                         // other permitAll route in this file.
                         .requestMatchers("/ws/chat/**").permitAll()
+                        // FEATURE (Admin module, PLATFORM ANNOUNCEMENTS): the live-announcements
+                        // banner feed must be visible to guests too (AnnouncementAudience.GUESTS_ONLY
+                        // is a real targeting option) — same permitAll-then-service-layer-enforces
+                        // pattern as every other public GET route above. Audience filtering itself
+                        // happens in AnnouncementService, not here.
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/announcements/live").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

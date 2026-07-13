@@ -39,7 +39,16 @@ public class AuthUser extends BaseAuditEntity {
     )
     private java.util.Set<AuthRole> roles = new java.util.HashSet<>();
 
+    /**
+     * FEATURE (Admin module, User Moderation): {@code BANNED} added alongside
+     * the pre-existing {@code SUSPENDED}/{@code LOCKED} values so Admin can
+     * express a permanent moderation outcome distinctly from a temporary one
+     * — both currently gate login identically (see {@code AuthService.login}),
+     * but are surfaced differently in Admin's read models. No CHECK constraint
+     * exists on the {@code account_status} column (see V1__auth_schema.sql),
+     * so this is a Java-only, additive change — no migration required.
+     */
     public enum AccountStatus {
-        ACTIVE, SUSPENDED, LOCKED
+        ACTIVE, SUSPENDED, LOCKED, BANNED
     }
 }
