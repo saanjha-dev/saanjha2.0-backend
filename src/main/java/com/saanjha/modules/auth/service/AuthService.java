@@ -97,7 +97,15 @@ public class AuthService {
             throw new AppException(ErrorCode.FORBIDDEN, "Please verify your email address.");
         }
         if (user.getStatus() != AuthUser.AccountStatus.ACTIVE) {
-            throw new AppException(ErrorCode.FORBIDDEN, "Account suspended.");
+            // FIX (Admin module integration): distinguish the specific reason at the
+            // error-code level — ACCOUNT_LOCKED/ACCOUNT_SUSPENDED already existed in
+            // ErrorCode but were unused here; BANNED reuses ACCOUNT_SUSPENDED's code
+            // (both are Admin-driven outcomes) with a clearer message.
+            switch (user.getStatus()) {
+                case LOCKED -> throw new AppException(ErrorCode.ACCOUNT_LOCKED, "This account has been locked due to suspicious activity.");
+                case BANNED -> throw new AppException(ErrorCode.ACCOUNT_SUSPENDED, "This account has been permanently banned.");
+                default -> throw new AppException(ErrorCode.ACCOUNT_SUSPENDED, "This account has been suspended by an administrator.");
+            }
         }
 
         AuthSession session = new AuthSession();
