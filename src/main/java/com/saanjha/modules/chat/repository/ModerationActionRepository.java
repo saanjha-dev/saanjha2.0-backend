@@ -8,7 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.UUID;
 
-@Repository
+@Repository("chatModerationActionRepository")
 public interface ModerationActionRepository extends JpaRepository<ModerationAction, UUID> {
 
     Page<ModerationAction> findByConversationIdOrderByCreatedAtDesc(UUID conversationId, Pageable pageable);

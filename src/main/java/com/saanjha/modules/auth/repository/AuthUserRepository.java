@@ -25,4 +25,13 @@ public interface AuthUserRepository extends JpaRepository<AuthUser, UUID> {
     @Modifying(clearAutomatically = true)
     @Query("UPDATE AuthUser u SET u.passwordHash = :newPasswordHash WHERE u.id = :userId")
     void updatePassword(@Param("userId") UUID userId, @Param("newPasswordHash") String newPasswordHash);
+
+    /**
+     * FEATURE (Admin module, User Moderation): direct status update, mirroring
+     * the existing {@code markEmailAsVerified}/{@code updatePassword} pattern
+     * of avoiding a full entity load for a single-column change.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE AuthUser u SET u.status = :status WHERE u.id = :userId")
+    void updateAccountStatus(@Param("userId") UUID userId, @Param("status") AuthUser.AccountStatus status);
 }

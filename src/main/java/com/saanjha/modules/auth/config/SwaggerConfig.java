@@ -133,4 +133,12 @@ public class SwaggerConfig {
                 .pathsToMatch("/v1/chats/**", "/v1/projects/*/chats/**")
                 .build();
     }
+
+    @Bean
+    public GroupedOpenApi adminApi() {
+        return GroupedOpenApi.builder()
+                .group("13. Admin")
+                .pathsToMatch("/v1/admin/**", "/v1/projects/*/admin/**")
+                .build();
+    }
 }
