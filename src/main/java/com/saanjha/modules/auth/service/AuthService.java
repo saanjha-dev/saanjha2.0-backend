@@ -15,6 +15,7 @@ import com.saanjha.shared.exception.AppException;
 import com.saanjha.shared.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -85,12 +87,34 @@ public class AuthService {
         eventPublisher.publish(new UserRegisteredEvent(user.getId(), user.getEmail(), Instant.now().toEpochMilli()));
     }
 
+    /**
+     * A pre-computed bcrypt hash used only to pad timing for non-existent
+     * accounts in {@link #login} - the plaintext behind it is irrelevant and
+     * deliberately never used for anything else; it exists purely so a
+     * failed comparison against it costs the same as a real one.
+     */
+    private static final String DUMMY_PASSWORD_HASH =
+            new BCryptPasswordEncoder(10).encode("no-account-exists-for-this-timing-decoy");
+
     @Transactional
     public AuthTokens login(LoginRequest req, String clientIp) {
-        AuthUser user = userRepository.findByEmail(req.email())
-                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "Invalid credentials."));
+        Optional<AuthUser> maybeUser = userRepository.findByEmail(req.email());
 
-        if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
+        // FIX (hardening sprint, P0-3): previously, a non-existent email
+        // threw immediately (a single fast DB lookup) while an existing
+        // email always paid the ~100ms bcrypt comparison cost before
+        // failing - an attacker measuring response time could enumerate
+        // valid accounts without ever seeing a different error message.
+        // Now every attempt runs exactly one bcrypt comparison, against the
+        // real hash if the account exists or a fixed decoy hash if it
+        // doesn't, so timing no longer reveals account existence.
+        boolean passwordMatches = passwordEncoder.matches(
+                req.password(),
+                maybeUser.map(AuthUser::getPasswordHash).orElse(DUMMY_PASSWORD_HASH));
+
+        AuthUser user = maybeUser.orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "Invalid credentials."));
+
+        if (!passwordMatches) {
             throw new AppException(ErrorCode.UNAUTHORIZED, "Invalid credentials.");
         }
         if (!user.isEmailVerified()) {
@@ -119,22 +143,9 @@ public class AuthService {
     }
 
     public void requestPasswordReset(String email) {
-
-        //System.out.println("REQUEST RECEIVED FOR: " + email);
-
         userRepository.findByEmail(email).ifPresent(user -> {
-
-            System.out.println("USER FOUND: " + user.getEmail());
-            System.out.println("STATUS: " + user.getStatus());
-
             if (user.getStatus() == AuthUser.AccountStatus.ACTIVE) {
-
-                System.out.println("GENERATING OTP");
-
-                generateAndDispatchOtp(
-                        user.getEmail(),
-                        "PASSWORD_RESET"
-                );
+                generateAndDispatchOtp(user.getEmail(), "PASSWORD_RESET");
             }
         });
     }
@@ -264,8 +275,40 @@ public class AuthService {
         eventPublisher.publish(new OtpGeneratedEvent(email, rawOtp, purpose));
     }
 
+    /**
+     * FIX (hardening sprint, P0-3): {@code @RateLimit} on the controller
+     * layer keys attempts by CALLER (authenticated user ID, or now the raw
+     * client IP - see {@code RateLimitAspect}). For OTP verification the
+     * caller is always anonymous, so that limiter caps "how many guesses can
+     * one IP make" - it does nothing to stop an attacker distributing guesses
+     * for one specific victim's 6-digit OTP across many source IPs (cheap
+     * and common via proxy pools/botnets) within the 5-minute TTL window.
+     * This adds a second, TARGET-keyed limiter (by email+purpose, not by
+     * caller) so a specific account's OTP is capped regardless of how many
+     * distinct source IPs the guesses come from. Deliberately small and
+     * scoped here rather than added as a new capability to the shared
+     * {@code RateLimit} annotation/aspect, which has no concept of "key by a
+     * field in the request body" - extending it would be a larger,
+     * higher-risk change for a fix that only this one code path needs.
+     */
+    private static final int MAX_OTP_ATTEMPTS = 5;
+
     private void validateAndConsumeOtp(String email, String rawOtp, String purpose) {
         String redisKey = "auth:otp:" + purpose + ":" + email;
+        String attemptsKey = "auth:otp-attempts:" + purpose + ":" + email;
+
+        Long attempts = redisTemplate.opsForValue().increment(attemptsKey);
+        if (attempts != null && attempts == 1L) {
+            redisTemplate.expire(attemptsKey, Duration.ofMinutes(5));
+        }
+        if (attempts != null && attempts > MAX_OTP_ATTEMPTS) {
+            // Same generic message as an invalid/expired OTP - a distinct
+            // "too many attempts" message here would let an attacker use the
+            // error text itself to fingerprint whether the account/purpose
+            // combination exists and has an active OTP in flight.
+            throw new AppException(ErrorCode.UNAUTHORIZED, "OTP is invalid or has expired.");
+        }
+
         String storedHash = redisTemplate.opsForValue().get(redisKey);
 
         if (storedHash == null || !passwordEncoder.matches(rawOtp, storedHash)) {
@@ -273,5 +316,6 @@ public class AuthService {
         }
 
         redisTemplate.delete(redisKey); // Single-use guarantee
+        redisTemplate.delete(attemptsKey); // Successful use resets the attempt counter
     }
 }
