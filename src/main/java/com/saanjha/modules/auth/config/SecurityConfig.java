@@ -1,5 +1,7 @@
 package com.saanjha.modules.auth.config;
 
+import com.saanjha.shared.exception.RestAccessDeniedHandler;
+import com.saanjha.shared.exception.RestAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +30,8 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
+    private final RestAccessDeniedHandler restAccessDeniedHandler;
 
     // Inject configuration values seamlessly
     @Value("${app.security.allowed-origins}")
@@ -47,6 +51,15 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // FIX (hardening sprint, P0-2): without this, filter-chain-level auth
+                // failures (an anonymous request hitting an .authenticated() route, or
+                // any future .hasRole(...) matcher) fell through to Spring Security's
+                // own default handling - a bare, bodyless 403 with no ApiEnvelope and,
+                // for the entry-point case, the wrong status code (401 vs 403). See the
+                // javadoc on both classes for why @RestControllerAdvice cannot cover this.
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(restAuthenticationEntryPoint)
+                        .accessDeniedHandler(restAccessDeniedHandler))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/v1/auth/register",

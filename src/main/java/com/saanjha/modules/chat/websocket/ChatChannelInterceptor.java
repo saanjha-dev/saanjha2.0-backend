@@ -12,7 +12,6 @@ import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -61,15 +60,33 @@ public class ChatChannelInterceptor implements ChannelInterceptor {
                 log.warn("Chat WebSocket CONNECT rejected: invalid token ({}).", ex.getMessage());
                 throw new org.springframework.messaging.MessagingException("Invalid or expired token.");
             }
+            // Auth propagation for STOMP frames uses accessor.setUser() ONLY.
+            // SecurityContextHolder is intentionally never touched here: it's
+            // ThreadLocal-backed, and Spring's clientInboundChannel dispatches
+            // frames (including later SEND/SUBSCRIBE frames for this same
+            // session) on pooled threads that are shared and reused across
+            // *different* users' sessions. A ThreadLocal write here would
+            // never be reliably cleared and could leak one user's identity
+            // into whatever runs next on that pooled thread. Every downstream
+            // @MessageMapping handler in ChatWebSocketController resolves the
+            // caller via the Principal method argument (backed by
+            // accessor.getUser()), which Spring Messaging propagates
+            // correctly per-message regardless of thread - never fall back to
+            // SecurityContextHolder/SecurityUtils.getCurrentUserId() inside a
+            // STOMP handler or any service it calls.
             var authentication = new UsernamePasswordAuthenticationToken(
                     userId.toString(), null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
             accessor.setUser(authentication);
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-            presenceService.setStatus(userId, "ONLINE");
+            // sessionConnected (not setStatus) - this session is one of
+            // potentially several concurrent sessions for this user; presence
+            // must only clear once ALL of them disconnect. See PresenceService.
+            presenceService.sessionConnected(userId);
         } else if (StompCommand.DISCONNECT.equals(accessor.getCommand())) {
             if (accessor.getUser() != null) {
                 UUID userId = UUID.fromString(accessor.getUser().getName());
-                presenceService.clear(userId);
+                // sessionDisconnected (not clear) - only marks the user OFFLINE
+                // once this was their last live session (multi-tab/multi-device safe).
+                presenceService.sessionDisconnected(userId);
             }
         }
         return message;

@@ -55,17 +55,38 @@ public class RateLimitAspect {
         return joinPoint.proceed();
     }
 
+    /**
+     * FIX (hardening sprint, P0-3, CRITICAL): this previously trusted the
+     * raw client-supplied {@code X-Forwarded-For} header with no validation
+     * of who sent it. Confirmed via repository-wide search: there is no
+     * reverse proxy config in this repo (no nginx/Tomcat RemoteIpValve
+     * config, no {@code server.forward-headers-strategy}), so nothing
+     * upstream of this application was overwriting that header - any caller
+     * could set {@code X-Forwarded-For: <anything>} directly and receive a
+     * brand-new rate-limit bucket on literally every request, making every
+     * {@code @RateLimit}-protected endpoint in the entire application
+     * (login, OTP verification, password reset, registration - not just
+     * auth) trivially bypassable. This now uses only
+     * {@code request.getRemoteAddr()}, the actual TCP peer address, which
+     * cannot be forged at the application layer.
+     * <p>
+     * If/when this app is deployed behind a real reverse proxy or load
+     * balancer, {@code getRemoteAddr()} will report the proxy's own IP for
+     * every request instead of the true client IP, collapsing rate limits
+     * across all users. The correct fix at that point is Tomcat's
+     * RemoteIpValve, configured via {@code server.tomcat.remoteip.*}
+     * properties restricted to that proxy's actual IP range (so the header
+     * is trusted ONLY when it genuinely comes from that trusted hop) - NOT
+     * reverting to trusting X-Forwarded-For unconditionally as before. See
+     * {@code docker-compose.yml}/deployment docs for whether a proxy sits in
+     * front of this service.
+     */
     private String getClientIdentifier() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
             return auth.getName(); // Returns the Auth UUID from the JWT token
         }
-        
-        // Fallback: X-Forwarded-For to bypass reverse proxies, else raw IP
-        String xfHeader = request.getHeader("X-Forwarded-For");
-        if (xfHeader == null || xfHeader.isEmpty() || "unknown".equalsIgnoreCase(xfHeader)) {
-            return request.getRemoteAddr();
-        }
-        return xfHeader.split(",")[0].trim();
+
+        return request.getRemoteAddr();
     }
 }
