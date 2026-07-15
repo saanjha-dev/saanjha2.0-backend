@@ -1,13 +1,27 @@
 version: '3.8'
 
+# FIX (hardening sprint, P0-5): this file previously only ran the app's
+# infrastructure (Postgres/Redis/RabbitMQ) - `docker-compose up` never
+# actually started the backend itself, so there was no one-command way to
+# run the full stack locally. Added the `saanjha-backend` service below,
+# building from the new root Dockerfile.
+#
+# Also replaced hardcoded credentials with `${VAR:-devDefault}` substitution.
+# The dev-only defaults after `:-` are intentionally still plain, memorable
+# values (this is a local-dev compose file, not a production deployment
+# manifest - nothing here should ever be pointed at a real environment), but
+# they're now overridable via a local, git-ignored `.env` file instead of
+# being the only option. See `.env.example` for every variable this stack
+# reads and what it's for.
+
 services:
   saanjha-postgres:
     image: postgres:15-alpine
     container_name: saanjha_db_node
     environment:
-      POSTGRES_DB: saanjha_auth
-      POSTGRES_USER: saanjha_user
-      POSTGRES_PASSWORD: securepass
+      POSTGRES_DB: ${POSTGRES_DB:-saanjha_auth}
+      POSTGRES_USER: ${POSTGRES_USER:-saanjha_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devlocalpass}
       # Optimize Postgres for local development memory usage
       POSTGRES_INITDB_ARGS: "--data-checksums"
     ports:
@@ -18,7 +32,7 @@ services:
       - saanjha-network
     # CRITICAL: Healthchecks prevent the backend from trying to connect before DB is actually ready to accept TCP connections
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U saanjha_user -d saanjha_auth"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -53,8 +67,8 @@ services:
     image: rabbitmq:3-management-alpine
     container_name: saanjha_mq_node
     environment:
-      RABBITMQ_DEFAULT_USER: saanjha_mq_user
-      RABBITMQ_DEFAULT_PASS: RabbitSecurePass2026!
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-saanjha_mq_user}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-devlocalmqpass}
     ports:
       - "5673:5672"   # AMQP protocol port
       - "15673:15672" # Management UI port
@@ -67,6 +81,47 @@ services:
       interval: 10s
       timeout: 10s
       retries: 3
+
+  saanjha-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: saanjha_backend_app
+    depends_on:
+      saanjha-postgres:
+        condition: service_healthy
+      saanjha-redis:
+        condition: service_healthy
+      saanjha-rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      # Hostnames are the other services' compose service names, not
+      # localhost - containers on the same compose network resolve each
+      # other by service name.
+      DB_URL: jdbc:postgresql://saanjha-postgres:5432/${POSTGRES_DB:-saanjha_auth}
+      DB_USERNAME: ${POSTGRES_USER:-saanjha_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-devlocalpass}
+      REDIS_HOST: saanjha-redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: saanjha-rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_USER:-saanjha_mq_user}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-devlocalmqpass}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+      MAIL_ID: ${MAIL_ID:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      CLOUD_NAME: ${CLOUD_NAME:-}
+      CLOUD_API_KEY: ${CLOUD_API_KEY:-}
+      CLOUD_API_SECRET: ${CLOUD_API_SECRET:-}
+      NOTIFICATION_HUB_API_KEY: ${NOTIFICATION_HUB_API_KEY:-dev-placeholder}
+      NOTIFICATION_HUB_API_SECRET: ${NOTIFICATION_HUB_API_SECRET:-dev-placeholder}
+      NOTIFICATION_WEBHOOK_SECRET: ${NOTIFICATION_WEBHOOK_SECRET:-dev-placeholder}
+    ports:
+      - "8080:8080"
+    networks:
+      - saanjha-network
+    restart: unless-stopped
 
 volumes:
   saanjha_pg_data:

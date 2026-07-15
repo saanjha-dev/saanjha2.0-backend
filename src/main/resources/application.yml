@@ -132,7 +132,16 @@ management:
         include: health, metrics, prometheus, info
   endpoint:
     health:
-      show-details: always
+      # FIX (hardening sprint, P0-5): defaults to the SAFE value now, matching
+      # the secure-by-default pattern this file already uses for CORS
+      # (app.security.allowed-origins has no permissive default either - see
+      # above). /actuator/** is fully unauthenticated (SecurityConfig
+      # .permitAll()), so whatever this defaults to is public to anyone. Only
+      # application-dev.yml explicitly opts into the more permissive `always`
+      # for local debugging convenience; application-prod.yml's existing
+      # `never` no longer needs to do anything special since it now matches
+      # this default, but is left in place as an explicit statement of intent.
+      show-details: never
   metrics:
     tags:
       application: ${spring.application.name}

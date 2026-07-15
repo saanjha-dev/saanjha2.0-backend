@@ -13,7 +13,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update # Rapid local iteration only. Never set outside this profile.
+      ddl-auto: validate # Rapid local iteration only. Never set outside this profile.
     show-sql: true
 
   flyway:
@@ -23,3 +23,8 @@ spring:
 app:
   security:
     allowed-origins: "*" # Local network testing only — never set outside this profile.
+
+management:
+  endpoint:
+    health:
+      show-details: always # Convenience for local debugging - the base default (never) is what every other profile gets.

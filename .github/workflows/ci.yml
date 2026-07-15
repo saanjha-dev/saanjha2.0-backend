@@ -1,0 +1,186 @@
+name: CI
+
+# FIX (hardening sprint, P0-6): no CI pipeline existed at all before this
+# file (confirmed: no .github directory anywhere in the repo). This is
+# VALIDATION ONLY, per the hardening-sprint brief - there is deliberately no
+# deploy/publish/push step anywhere below, including the Docker job, which
+# builds the image to prove the Dockerfile works but never pushes it
+# anywhere.
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+# Cancel a stale run on the same branch/PR when new commits land, rather than
+# burning CI minutes finishing a run whose result no longer matters.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # None of these are real credentials - they only need to be non-blank
+  # enough to let the app boot under test (see NotificationHubClient.Builder,
+  # which throws IllegalArgumentException at startup on a blank key/secret)
+  # and they never leave this job's own network. A real deployment gets real
+  # values from real secret storage - see application-prod.yml, which fails
+  # loudly on startup if those are missing, rather than falling back to
+  # anything resembling these.
+  SPRING_PROFILES_ACTIVE: dev
+  CORS_ALLOWED_ORIGINS: "*"
+  MAIL_ID: ci-test@example.com
+  MAIL_PASSWORD: ci-dummy-password
+  CLOUD_NAME: ci-dummy
+  CLOUD_API_KEY: ci-dummy
+  CLOUD_API_SECRET: ci-dummy
+  NOTIFICATION_HUB_API_KEY: ci-dummy-key
+  NOTIFICATION_HUB_API_SECRET: ci-dummy-secret
+  NOTIFICATION_WEBHOOK_SECRET: ci-dummy-secret
+  DB_URL: jdbc:postgresql://localhost:5432/saanjha_ci
+  DB_USERNAME: saanjha_ci
+  DB_PASSWORD: saanjha_ci_pass
+  REDIS_HOST: localhost
+  REDIS_PORT: 6379
+  RABBITMQ_HOST: localhost
+  RABBITMQ_PORT: 5672
+  RABBITMQ_USERNAME: guest
+  RABBITMQ_PASSWORD: guest
+
+jobs:
+  build-and-test:
+    name: Build, Test, Analyze
+    runs-on: ubuntu-latest
+
+    # Fixed-port service containers for the app's own full-context
+    # @SpringBootTest (ApplicationTests) and any other test that boots the
+    # real Spring context rather than using Testcontainers. This runs
+    # alongside, not instead of, the Testcontainers-based tests added during
+    # this hardening sprint (e.g. PresenceServiceTest, ChatWebSocketIntegrationTest)
+    # - those spin up their own containers dynamically on random ports via
+    # @Container/@DynamicPropertySource and don't touch these fixed ports at
+    # all, so there's no conflict running both in the same job. GitHub-hosted
+    # ubuntu-latest runners have Docker available natively, so Testcontainers
+    # works here with no extra setup.
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: saanjha_ci
+          POSTGRES_USER: saanjha_ci
+          POSTGRES_PASSWORD: saanjha_ci_pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U saanjha_ci -d saanjha_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      rabbitmq:
+        image: rabbitmq:3-management-alpine
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q check_running"
+          --health-interval 10s --health-timeout 10s --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          # Built-in Maven dependency caching, keyed on pom.xml - this is the
+          # "dependency caching" pipeline step; no separate actions/cache
+          # config needed for the common case.
+          cache: maven
+
+      - name: Make mvnw executable
+        run: chmod +x mvnw
+
+      - name: Compile
+        run: ./mvnw -B -ntp clean compile
+
+      - name: Run tests
+        run: ./mvnw -B -ntp test
+
+      # Runs regardless of whether the test step above passed or failed, so a
+      # failing build still surfaces exactly which test(s) broke instead of
+      # only "tests failed, see logs."
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-test-reports
+          path: target/surefire-reports/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      # Static analysis, report-only rather than build-failing. This is a
+      # deliberate choice, not an oversight: SpotBugs has never run against
+      # this codebase before (confirmed: no spotbugs/pmd/checkstyle plugin
+      # anywhere in pom.xml), so a hard `:check` gate here would immediately
+      # turn CI red on an unknown number of pre-existing, un-triaged
+      # findings across 14 modules, on the very first run - blocking every
+      # future PR until someone works through a backlog that has nothing to
+      # do with their change. Standard practice for introducing static
+      # analysis to an established codebase: turn on visibility first
+      # (report as a downloadable artifact), then ratchet up to a
+      # build-failing gate once a baseline is established and a threshold is
+      # deliberately chosen - not guessed at here.
+      - name: Static analysis (SpotBugs, report-only)
+        run: >-
+          ./mvnw -B -ntp com.github.spotbugs:spotbugs-maven-plugin:4.8.6.0:spotbugs
+          -Dspotbugs.effort=Max
+        continue-on-error: true
+
+      - name: Upload static analysis report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spotbugs-report
+          path: target/spotbugsXml.xml
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Package
+        run: ./mvnw -B -ntp package -DskipTests
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: saanjha-backend-jar
+          path: target/*.jar
+          retention-days: 14
+
+  docker-build-verify:
+    name: Docker Build Verification
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Builds the image to prove the Dockerfile actually produces a working
+      # image - does NOT push it anywhere. No registry credentials are
+      # configured in this workflow at all, so there is nowhere for a push to
+      # even go; this step is validation, full stop.
+      - name: Build image (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: saanjha-backend:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
