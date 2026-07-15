@@ -16,7 +16,17 @@ import java.util.UUID;
 public class AdminNoteService {
 
     private final AdminNoteRepository noteRepository;
+    private final AdminAuditService auditService;
 
+    /**
+     * FIX (hardening sprint, P0-4): this was the one real gap found after
+     * checking every {@code @Transactional} mutating method across every
+     * Admin service against the audit ledger - {@code addNote} saved the
+     * note itself (which is self-attributing: authorId/targetType/targetId/
+     * timestamp) but never recorded an entry in {@code AdminAuditLog}, so
+     * "who left internal notes about which user" wasn't visible from the
+     * audit trail itself, only from directly querying the notes table.
+     */
     @Transactional
     public AdminNote addNote(UUID authorId, ModerationTargetType targetType, UUID targetId, String note) {
         AdminNote entity = new AdminNote();
@@ -24,7 +34,11 @@ public class AdminNoteService {
         entity.setTargetType(targetType);
         entity.setTargetId(targetId);
         entity.setNote(note);
-        return noteRepository.save(entity);
+        AdminNote saved = noteRepository.save(entity);
+
+        auditService.record(authorId, "ADMIN_NOTE_ADDED", targetType, targetId, null, null, null);
+
+        return saved;
     }
 
     @Transactional(readOnly = true)
