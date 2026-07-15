@@ -85,16 +85,25 @@ public class AdminAuditService {
         return (header != null && !header.isBlank()) ? header : UUID.randomUUID().toString();
     }
 
+    /**
+     * FIX (hardening sprint, P0-4): previously trusted the raw, client-
+     * supplied {@code X-Forwarded-For} header outright. Same root cause
+     * already found and fixed in {@code RateLimitAspect} - this repository
+     * has no reverse proxy in front of it anywhere (confirmed via
+     * repository-wide search: no nginx config, no
+     * {@code server.forward-headers-strategy}), so nothing was overwriting
+     * that header for a direct caller. Here the consequence is worse than a
+     * rate-limit bypass: this value is written into the permanent,
+     * append-only accountability ledger the brief calls "the technical audit
+     * ledger" - any actor could inject an arbitrary false IP into their own
+     * audit record, undermining exactly the forensic guarantee this table
+     * exists to provide. Now uses only {@code request.getRemoteAddr()}; see
+     * {@code RateLimitAspect.getClientIdentifier()}'s javadoc for the same
+     * reasoning and the path to a real trusted-proxy configuration later.
+     */
     private String currentIp() {
         HttpServletRequest request = currentRequest();
-        if (request == null) {
-            return null;
-        }
-        String forwardedFor = request.getHeader("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            return forwardedFor.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
+        return request == null ? null : request.getRemoteAddr();
     }
 
     private String currentUserAgent() {

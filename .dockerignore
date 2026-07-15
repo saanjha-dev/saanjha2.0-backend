@@ -1,0 +1,27 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Build output (rebuilt inside the image itself - never trust a host-built target/)
+target/
+
+# IDE / editor
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Local-only environment/secrets - never bake these into an image layer
+.env
+.env.*
+*.local.yml
+
+# Docs not needed inside the image
+README.md
