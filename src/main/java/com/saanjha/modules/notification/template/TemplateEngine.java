@@ -21,6 +21,17 @@ import java.util.regex.Pattern;
  * module doesn't have yet. Documented as a Future Extension Point for when
  * "template inheritance"/"rich HTML branding" (also brief items) become real
  * requirements rather than speculative ones.
+ * <p>
+ * That "rich HTML branding" requirement did land (the enterprise email
+ * design system redesign), and was deliberately satisfied WITHOUT adding
+ * inheritance/partials here: {@code scripts/notification/gen_templates.py}
+ * defines the shared layout once and stamps out each EMAIL row as a
+ * complete, self-contained HTML document at migration-authoring time, so
+ * every row this engine reads is still just static markup plus flat
+ * {@code {{variable}}} tokens - exactly what this engine already handles.
+ * See {@code docs/notification/email-design-system.md} for why that
+ * generator-based approach was chosen over teaching this class to support
+ * includes.
  */
 @Component
 public class TemplateEngine {
