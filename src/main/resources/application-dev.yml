@@ -14,7 +14,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate # Rapid local iteration only. Never set outside this profile.
-    show-sql: true
+    show-sql: false
 
   flyway:
     clean-on-validation-error: true # Self-heals a disposable local DB. Drops every managed schema — local sandbox only.
