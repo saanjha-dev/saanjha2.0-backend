@@ -56,11 +56,32 @@ public class SmtpEmailProvider implements NotificationProvider {
             helper.setTo(request.recipientAddress());
             helper.setSubject(request.subject() != null ? request.subject() : "Saanjha notification");
 
-            String actionHtml = request.actionUrl() != null
-                    ? "<p><a href=\"" + request.actionUrl() + "\">View in Saanjha</a></p>"
-                    : "";
-            String html = "<div style='font-family: Arial, sans-serif; padding: 20px;'>"
-                    + "<p>" + request.body() + "</p>" + actionHtml + "</div>";
+            // As of the enterprise email template redesign, EMAIL body_templates are
+            // complete, self-contained HTML documents (<!DOCTYPE html> ... </html>) with
+            // their own layout, styling, and CTA button(s) baked in - see V21's redesigned
+            // templates and TemplateService's javadoc. Wrapping a full document inside a
+            // <p> inside a <div> (the old behavior) produces invalid, broken markup, so a
+            // rendered body that is already a full document is sent through untouched.
+            // A plain-text/fragment body (the generic fallback TemplateService.render()
+            // builds when no template row matches an event/channel/locale, or any legacy
+            // unmigrated template) is still wrapped in a minimal styled shell so it doesn't
+            // arrive as bare, unstyled text - this branch is what the pre-redesign code did
+            // for every body, unconditionally.
+            String body = request.body() != null ? request.body() : "";
+            String trimmed = body.stripLeading();
+            boolean isFullDocument = trimmed.regionMatches(true, 0, "<!DOCTYPE html", 0, 14)
+                    || trimmed.regionMatches(true, 0, "<html", 0, 5);
+
+            String html;
+            if (isFullDocument) {
+                html = body;
+            } else {
+                String actionHtml = request.actionUrl() != null
+                        ? "<p><a href=\"" + request.actionUrl() + "\">View in Saanjha</a></p>"
+                        : "";
+                html = "<div style='font-family: Arial, sans-serif; padding: 20px;'>"
+                        + "<p>" + body + "</p>" + actionHtml + "</div>";
+            }
             helper.setText(html, true);
 
             mailSender.send(message);
