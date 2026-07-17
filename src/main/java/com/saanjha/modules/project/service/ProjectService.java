@@ -17,6 +17,8 @@ import com.saanjha.shared.exception.ErrorCode;
 import com.saanjha.shared.security.HtmlSanitizer;
 
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -35,6 +37,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ProjectService {
 
+    private static final Logger log = LoggerFactory.getLogger(ProjectService.class);
     private static final int MIN_DESCRIPTION_LENGTH_TO_PUBLISH = 50;
     private static final int MIN_REQUIREMENTS_TO_PUBLISH = 1;
     private static final int MIN_TEAM_SIZE_TO_LOCK = 2;
@@ -408,6 +411,7 @@ public class ProjectService {
                 .toList();
         String excerpt = project.getDescription() == null ? "" :
                 project.getDescription().substring(0, Math.min(500, project.getDescription().length()));
+        log.info("DIAG: about to publish ProjectDiscoveryUpdatedEvent for project {}", project.getId());
 
         eventPublisher.publishEvent(new ProjectDiscoveryUpdatedEvent(
                 project.getId(), project.getLeadUserId(), project.getTitle(), project.getSlug(), excerpt,
