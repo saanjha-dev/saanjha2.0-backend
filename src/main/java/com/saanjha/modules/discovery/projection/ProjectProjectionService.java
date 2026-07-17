@@ -33,6 +33,7 @@ public class ProjectProjectionService {
     private final DiscoveryMetrics metrics;
 
     public void applyDiscoverySync(ProjectDiscoveryUpdatedEvent event) {
+        log.info("DIAG: applyDiscoverySync running for project {}", event.projectId());
         ProjectSearchDocument doc = repository.findById(event.projectId())
                 .orElseGet(ProjectSearchDocument::new);
 
