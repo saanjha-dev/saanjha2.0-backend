@@ -46,6 +46,7 @@ public class DiscoveryEventListener {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onProjectDiscoveryUpdated(ProjectDiscoveryUpdatedEvent event) {
+        log.info("DIAG: onProjectDiscoveryUpdated received for project {}", event.projectId());
         projectProjectionService.applyDiscoverySync(event);
     }
 

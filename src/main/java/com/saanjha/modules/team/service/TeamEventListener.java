@@ -32,6 +32,7 @@ public class TeamEventListener {
 
     @TransactionalEventListener
     public void onProjectPublished(com.saanjha.modules.project.event.ProjectEvents.ProjectPublishedEvent event) {
+        log.info("DIAG: onProjectPublished received for project {}", event.projectId());
         safely(() -> teamService.getOrCreateTeam(event.projectId(), event.leadUserId()),
                 "seed team for project " + event.projectId());
     }
