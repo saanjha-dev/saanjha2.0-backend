@@ -262,14 +262,28 @@ public class AuthService {
     // ========================================================================
 
     private void generateAndDispatchOtp(String email, String purpose) {
+        String redisKey = "auth:otp:" + purpose + ":" + email;
+
+        // 1. Enforce a 60-second cooldown before allowing a new OTP generation
+        Long expireSeconds = redisTemplate.getExpire(redisKey, java.util.concurrent.TimeUnit.SECONDS);
+
+        // If TTL is greater than 240 seconds, the OTP was generated less than 60 seconds ago.
+        if (expireSeconds != null && expireSeconds > 240) {
+            long secondsToWait = expireSeconds - 240;
+            throw new AppException(
+                    ErrorCode.TOO_MANY_REQUESTS,
+                    "Please wait " + secondsToWait + " seconds before requesting a new OTP."
+            );
+        }
+
+        // 2. Generate the new OTP
         int secureNumber = 100000 + SECURE_RANDOM.nextInt(900000);
         String rawOtp = String.valueOf(secureNumber);
 
         // Treat OTPs exactly like passwords in cache
         String hashedOtp = passwordEncoder.encode(rawOtp);
-        String redisKey = "auth:otp:" + purpose + ":" + email;
 
-        // Overwrites any existing pending OTP. Strict 5-minute TTL.
+        // 3. Overwrite any existing pending OTP (that has passed the cooldown). Strict 5-minute TTL.
         redisTemplate.opsForValue().set(redisKey, hashedOtp, Duration.ofMinutes(5));
 
         eventPublisher.publish(new OtpGeneratedEvent(email, rawOtp, purpose));
