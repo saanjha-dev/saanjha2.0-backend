@@ -14,6 +14,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+// Add these two imports:
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.Instant;
 
 /**
@@ -32,6 +36,7 @@ public class ProjectProjectionService {
     private final SuggestionService suggestionService;
     private final DiscoveryMetrics metrics;
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW) // <--- FIX
     public void applyDiscoverySync(ProjectDiscoveryUpdatedEvent event) {
         log.info("DIAG: applyDiscoverySync running for project {}", event.projectId());
         ProjectSearchDocument doc = repository.findById(event.projectId())
@@ -56,42 +61,44 @@ public class ProjectProjectionService {
         doc.setPopularityScore(computePopularityBaseline(doc));
 
         repository.save(doc);
+        log.info("DIAG: discovery doc saved, projectId={}, indexed={}", doc.getProjectId(), doc.isIndexed());
         metrics.recordProjectionLag("project", java.time.Duration.between(event.occurredAt(), Instant.now()).toMillis());
         suggestionService.recordTerm(event.title(), SuggestionEntityType.PROJECT_TITLE);
         event.requiredSkills().forEach(skill -> suggestionService.recordTerm(skill, SuggestionEntityType.SKILL));
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW) // <--- FIX
     public void applyPublished(ProjectPublishedEvent event) {
         repository.findById(event.projectId()).ifPresent(doc -> {
             if (doc.getPublishedAt() == null) {
                 doc.setPublishedAt(event.occurredAt());
                 repository.save(doc);
+                log.info("DIAG: discovery doc saved, projectId={}, indexed={}", doc.getProjectId(), doc.isIndexed());
             }
         });
-        // If ProjectDiscoveryUpdatedEvent hasn't landed yet (should fire in the same
-        // transaction, but ordering across two @TransactionalEventListener methods on
-        // different modules is not guaranteed), there is nothing to index yet -- the
-        // sync event, once it arrives, creates the row. Logged, not thrown: Discovery
-        // must never fail Project's own transaction.
         if (repository.findById(event.projectId()).isEmpty()) {
             log.debug("Discovery: ProjectPublishedEvent for {} arrived before its DiscoveryUpdated sync event.",
                     event.projectId());
         }
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW) // <--- FIX
     public void applyArchived(ProjectArchivedEvent event) {
         repository.findById(event.projectId()).ifPresent(doc -> {
             doc.setIndexed(false);
             doc.setStatus("ARCHIVED");
             repository.save(doc);
+            log.info("DIAG: discovery doc saved, projectId={}, indexed={}", doc.getProjectId(), doc.isIndexed());
         });
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW) // <--- FIX
     public void applyCompleted(ProjectCompletedEvent event) {
         repository.findById(event.projectId()).ifPresent(doc -> {
             doc.setIndexed(false);
             doc.setStatus("COMPLETED");
             repository.save(doc);
+            log.info("DIAG: discovery doc saved, projectId={}, indexed={}", doc.getProjectId(), doc.isIndexed());
         });
     }
 
