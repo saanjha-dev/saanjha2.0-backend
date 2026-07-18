@@ -14,12 +14,16 @@ import com.saanjha.modules.team.repository.TeamRepository;
 import com.saanjha.shared.exception.AppException;
 import com.saanjha.shared.exception.ErrorCode;
 
+import com.saanjha.shared.notification.EmailService;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
@@ -54,16 +58,20 @@ public class TeamService {
     private final ProjectService projectService;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private static final Logger log = LoggerFactory.getLogger(TeamService.class);
+
 
     // ========================================================================
     // TEAM FORMATION (listener-triggered, idempotent)
     // ========================================================================
 
     /** Self-seeds a Team + founding LEAD membership. Safe to call more than once for the same project. */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW) // <--- FIX HERE
     public void getOrCreateTeam(UUID projectId, UUID founderUserId) {
-        if (teamRepository.existsByProjectId(projectId)) {
-            return; // Duplicate ProjectPublishedEvent delivery — already seeded.
+        boolean alreadyExists = teamRepository.existsByProjectId(projectId);
+        log.info("DIAG: existsByProjectId({}) = {}", projectId, alreadyExists);
+        if (alreadyExists) {
+            return;
         }
 
         Team team = new Team();
@@ -74,6 +82,7 @@ public class TeamService {
 
         try {
             team = teamRepository.save(team);
+            log.info("DIAG: team row saved, id={}, projectId={}", team.getId(), team.getProjectId());
         } catch (DataIntegrityViolationException ex) {
             // Lost a race against a concurrent duplicate delivery to the unique
             // index on project_id — the other delivery won, nothing left to do.
@@ -98,7 +107,7 @@ public class TeamService {
     // ROSTER GROWTH (listener-triggered, idempotent)
     // ========================================================================
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW) // <--- FIX HERE
     public void addMember(UUID projectId, UUID userId, MembershipSource source, UUID sourceReferenceId) {
         if (sourceReferenceId != null && membershipRepository.existsBySourceReferenceId(sourceReferenceId)) {
             return; // Duplicate ApplicationAccepted/InvitationAccepted delivery — already seated.
@@ -138,6 +147,7 @@ public class TeamService {
 
         team.setCurrentMemberCount(team.getCurrentMemberCount() + 1);
         team = teamRepository.save(team);
+        log.info("DIAG: team row saved, id={}, projectId={}", team.getId(), team.getProjectId());
 
         historyRepository.save(MembershipHistory.statusChange(
                 team.getId(), membership.getId(), userId, EventType.JOINED, null, MembershipStatus.ACTIVE, userId, "Joined via " + source + "."));
@@ -155,7 +165,7 @@ public class TeamService {
     // TEAM LIFECYCLE (listener-triggered, idempotent)
     // ========================================================================
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW) // <--- FIX HERE
     public void activateTeam(UUID projectId) {
         Optional<Team> maybeTeam = teamRepository.findWithLockByProjectId(projectId);
         if (maybeTeam.isEmpty() || maybeTeam.get().getStatus() != TeamStatus.CREATED) {
@@ -165,9 +175,10 @@ public class TeamService {
         team.setStatus(TeamStatus.ACTIVE);
         team.setActiveSince(Instant.now());
         teamRepository.save(team);
+        log.info("DIAG: team row saved, id={}, projectId={}", team.getId(), team.getProjectId());
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW) // <--- FIX HERE
     public void archiveWithTeam(UUID projectId) {
         Optional<Team> maybeTeam = teamRepository.findWithLockByProjectId(projectId);
         if (maybeTeam.isEmpty()) {
@@ -183,6 +194,7 @@ public class TeamService {
         team.setStatus(TeamStatus.ARCHIVED);
         team.setArchivedAt(Instant.now());
         teamRepository.save(team);
+        log.info("DIAG: team row saved, id={}, projectId={}", team.getId(), team.getProjectId());
 
         // FIX (TD20, architecture-review.md §9.4): TeamArchivedEvent previously
         // fired with no roster, even though every membership row had already
@@ -370,6 +382,7 @@ public class TeamService {
         team.setStatus(TeamStatus.LOCKED);
         team.setLockedAt(Instant.now());
         team = teamRepository.save(team);
+        log.info("DIAG: team row saved, id={}, projectId={}", team.getId(), team.getProjectId());
 
         eventPublisher.publishEvent(new TeamLockedEvent(teamId, team.getProjectId(), actingUserId, reason, Instant.now()));
         return mapToResponse(team);
@@ -382,6 +395,7 @@ public class TeamService {
         team.setStatus(TeamStatus.ACTIVE);
         team.setLockedAt(null);
         team = teamRepository.save(team);
+        log.info("DIAG: team row saved, id={}, projectId={}", team.getId(), team.getProjectId());
 
         eventPublisher.publishEvent(new TeamUnlockedEvent(teamId, team.getProjectId(), actingUserId, Instant.now()));
         return mapToResponse(team);
@@ -398,6 +412,7 @@ public class TeamService {
         team.setDissolvedAt(Instant.now());
         team.setDissolutionReason(reason);
         team = teamRepository.save(team);
+        log.info("DIAG: team row saved, id={}, projectId={}", team.getId(), team.getProjectId());
 
         eventPublisher.publishEvent(new TeamDissolvedEvent(teamId, team.getProjectId(), actingUserId, reason, roster, Instant.now()));
         return mapToResponse(team);
@@ -421,6 +436,7 @@ public class TeamService {
 
         team.setSettingsJson(writeSettings(updated));
         team = teamRepository.save(team);
+        log.info("DIAG: team row saved, id={}, projectId={}", team.getId(), team.getProjectId());
         return mapToResponse(team);
     }
 
