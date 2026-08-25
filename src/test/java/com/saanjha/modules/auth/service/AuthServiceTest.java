@@ -10,6 +10,7 @@ import com.saanjha.modules.auth.entity.AuthUser;
 import com.saanjha.modules.auth.repository.AuthRoleRepository;
 import com.saanjha.modules.auth.repository.AuthSessionRepository;
 import com.saanjha.modules.auth.repository.AuthUserRepository;
+import com.saanjha.modules.auth.repository.AuthTrustedDeviceRepository;
 import com.saanjha.modules.auth.repository.RefreshTokenRepository;
 import com.saanjha.shared.exception.AppException;
 import com.saanjha.shared.exception.ErrorCode;
@@ -54,13 +55,14 @@ class AuthServiceTest {
     @Mock private EventPublisherService eventPublisher;
     @Mock private PermissionCacheService permissionCacheService;
     @Mock private JwtProvider jwtProvider;
+    @Mock private AuthTrustedDeviceRepository authTrustedDeviceRepository;
 
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
         authService = new AuthService(userRepository, roleRepository, sessionRepository, tokenRepository,
-                redisTemplate, passwordEncoder, tokenRotationService, eventPublisher, permissionCacheService, jwtProvider);
+                redisTemplate, passwordEncoder, tokenRotationService, eventPublisher, permissionCacheService, jwtProvider, authTrustedDeviceRepository);
     }
 
     // ------------------------------------------------------------------

@@ -48,6 +48,13 @@ public interface ProjectSnapshotProvider {
             String slug,
             String category,
             String descriptionExcerpt,
-            List<String> technologyTags
+            List<String> technologyTags,
+            List<RequirementSnapshot> requirements
+    ) {}
+
+    record RequirementSnapshot(
+            String roleName,
+            java.util.Set<String> skills,
+            String skillLevel
     ) {}
 }

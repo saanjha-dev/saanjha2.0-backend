@@ -5,6 +5,7 @@ import com.saanjha.modules.chat.entity.MemberRole;
 import com.saanjha.modules.chat.entity.MemberStatus;
 import com.saanjha.modules.chat.repository.ConversationMemberRepository;
 import com.saanjha.modules.chat.repository.MessageRepository;
+import com.saanjha.modules.team.service.TeamSecurityGuard;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -32,6 +33,18 @@ public class ChatSecurityGuard {
 
     private final ConversationMemberRepository memberRepository;
     private final MessageRepository messageRepository;
+    private final TeamSecurityGuard teamSecurityGuard;
+
+    /**
+     * P0-5 (Project Conversation Query): authorizes {@code GET /v1/projects/
+     * {projectId}/conversations}. Composes {@code TeamSecurityGuard} for the
+     * "is this user on this project's team" check rather than duplicating
+     * membership logic — same reuse discipline {@code TaskSecurityGuard}
+     * already established for the same cross-module question.
+     */
+    public boolean isTeamMemberOfProject(UUID projectId, String userIdText) {
+        return teamSecurityGuard.isMemberOfProjectsTeam(projectId, userIdText);
+    }
 
     /** True if the user currently holds a live (ACTIVE or MUTED) seat in this conversation. */
     public boolean isMember(UUID conversationId, String userIdText) {

@@ -52,7 +52,8 @@ public class TemplateService {
 
         // Fallback: never block dispatch on a missing template row.
         String title = String.valueOf(variables.getOrDefault("title", humanize(eventType)));
-        return new RenderedContent(title, title, null);
+        String actionUrl = variables.containsKey("actionUrl") ? String.valueOf(variables.get("actionUrl")) : null;
+        return new RenderedContent(title, title, actionUrl);
     }
 
     private NotificationTemplate lookup(String eventType, NotificationChannel channel, String locale) {

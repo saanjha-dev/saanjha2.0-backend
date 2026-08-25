@@ -100,4 +100,19 @@ public class TeamResponseDTOs {
             String message,
             String status
     ) {}
+
+    /**
+     * P0-1 (Workspace/Team Discovery): one row of the caller's "my
+     * workspaces" list — the team itself (reusing {@link TeamResponse}
+     * rather than a parallel shape) plus the caller's own role/status/
+     * tenure on it, so the frontend never needs a second call per team to
+     * learn "what am I on this one".
+     */
+    public record MyTeamMembershipResponse(
+            TeamResponse team,
+            UUID membershipId,
+            String role,
+            String membershipStatus,
+            Instant joinedAt
+    ) {}
 }

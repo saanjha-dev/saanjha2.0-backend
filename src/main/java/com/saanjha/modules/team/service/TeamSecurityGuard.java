@@ -4,6 +4,7 @@ import com.saanjha.modules.team.entity.Membership;
 import com.saanjha.modules.team.entity.MembershipRole;
 import com.saanjha.modules.team.entity.MembershipStatus;
 import com.saanjha.modules.team.entity.Team;
+import com.saanjha.modules.team.entity.TeamSettings;
 import com.saanjha.modules.team.repository.MembershipRepository;
 import com.saanjha.modules.team.repository.TeamRepository;
 import lombok.RequiredArgsConstructor;
@@ -108,6 +109,25 @@ public class TeamSecurityGuard {
                 .map(Team::getId)
                 .map(teamId -> isVisibleTo(teamId, userIdText))
                 .orElse(false);
+    }
+
+    /**
+     * FIX (P0-2, Invitation Policy Enforcement): centralizes the
+     * {@code TeamSettings.memberInvitationPolicy} evaluation so
+     * {@code InvitationController} doesn't duplicate policy logic in its
+     * own {@code @PreAuthorize} expression. {@code LEAD_ONLY} requires the
+     * canonical Team-owned Lead check; {@code ANY_MEMBER} accepts any live
+     * (ACTIVE or SUSPENDED) member, Lead included.
+     */
+    public boolean canInviteToProject(UUID projectId, String userIdText) {
+        if (projectId == null || userIdText == null) {
+            return false;
+        }
+        TeamSettings.MemberInvitationPolicy policy = teamService.getInvitationPolicyForProject(projectId);
+        return switch (policy) {
+            case LEAD_ONLY -> isLeadOfProjectsTeam(projectId, userIdText);
+            case ANY_MEMBER -> isMemberOfProjectsTeam(projectId, userIdText);
+        };
     }
 
     /** True if the given user is the specific member the request targets (e.g. leaving their own seat). */

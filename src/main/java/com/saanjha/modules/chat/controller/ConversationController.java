@@ -74,6 +74,27 @@ public class ConversationController {
         return ResponseEntity.ok(ApiEnvelope.success(result.getContent(), paginationMeta(result)));
     }
 
+    /**
+     * FIX (P0-5, Project Conversation Query): previously the frontend had to
+     * either load every conversation the caller belongs to and filter
+     * client-side, or fetch each project conversation individually. This
+     * returns exactly the conversations logically linked to one project
+     * (PROJECT_TEAM / PROJECT_ANNOUNCEMENTS), paginated and authorized
+     * against team membership rather than direct conversation membership,
+     * so the frontend never needs to guess a conversationId first.
+     */
+    @GetMapping("/v1/projects/{projectId}/conversations")
+    @RateLimit(action = "list-project-conversations", baseLimit = 30)
+    @PreAuthorize("hasAuthority('chat:moderate') or @chatGuard.isTeamMemberOfProject(#projectId, authentication.name)")
+    @Operation(summary = "List a Project's Conversations", description = "The project's team chat / announcements conversations, paginated — no need to load every conversation the caller belongs to just to filter by project.")
+    public ResponseEntity<ApiEnvelope<java.util.List<ConversationSummaryResponse>>> listByProject(
+            @PathVariable UUID projectId,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        UUID viewerId = SecurityUtils.getCurrentUserId();
+        Page<ConversationSummaryResponse> result = conversationService.listByProject(projectId, viewerId, buildPageable(page, size));
+        return ResponseEntity.ok(ApiEnvelope.success(result.getContent(), paginationMeta(result)));
+    }
+
     @GetMapping("/v1/chats/conversations/{id}/members")
     @RateLimit(action = "list-conversation-members", baseLimit = 30)
     @PreAuthorize("hasAuthority('chat:moderate') or @chatGuard.isMember(#id, authentication.name)")
@@ -120,6 +141,15 @@ public class ConversationController {
     public ResponseEntity<ApiEnvelope<ChatMutationResponse>> leave(@PathVariable UUID id) {
         conversationService.leaveConversation(id, SecurityUtils.getCurrentUserId());
         return ResponseEntity.ok(ApiEnvelope.success(new ChatMutationResponse("Left conversation.", "OK")));
+    }
+
+    @DeleteMapping("/v1/chats/conversations/{id}/history")
+    @RateLimit(action = "clear-conversation-history", baseLimit = 20)
+    @PreAuthorize("hasAuthority('chat:participate') and @chatGuard.isMember(#id, authentication.name)")
+    @Operation(summary = "Clear Chat History", description = "Clears history for the caller only.")
+    public ResponseEntity<ApiEnvelope<ChatMutationResponse>> clearHistory(@PathVariable UUID id) {
+        conversationService.clearHistory(id, SecurityUtils.getCurrentUserId());
+        return ResponseEntity.ok(ApiEnvelope.success(new ChatMutationResponse("Conversation history cleared.", "OK")));
     }
 
     @PostMapping("/v1/chats/conversations/{id}/members/{userId}/mute")
@@ -169,6 +199,25 @@ public class ConversationController {
     public ResponseEntity<ApiEnvelope<ChatMutationResponse>> unlock(@PathVariable UUID id) {
         conversationService.unlockConversation(id, SecurityUtils.getCurrentUserId());
         return ResponseEntity.ok(ApiEnvelope.success(new ChatMutationResponse("Conversation unlocked.", "OK")));
+    }
+
+    /**
+     * Idempotent role-channel sync for the Workspace Chat. Creates one GROUP
+     * conversation per open role (from the project's requirements), plus a
+     * "General" conversation for all members. Correct members are assigned
+     * based on their {@code contributionTitle} in the team roster.
+     *
+     * Safe to call on every workspace mount — existing conversations are
+     * returned as-is, new ones are created only when needed.
+     */
+    @PostMapping("/v1/projects/{projectId}/conversations/sync-roles")
+    @PreAuthorize("hasAuthority('chat:participate') and @chatGuard.isTeamMemberOfProject(#projectId, authentication.name)")
+    @Operation(summary = "Sync Role Channels", description = "Idempotent: creates/returns project conversations matching the project's open roles and team roster.")
+    public ResponseEntity<ApiEnvelope<java.util.List<ConversationSummaryResponse>>> syncRoleChannels(
+            @PathVariable UUID projectId) {
+        UUID userId = SecurityUtils.getCurrentUserId();
+        java.util.List<ConversationSummaryResponse> result = conversationService.syncRoleChannelsFromProject(projectId, userId);
+        return ResponseEntity.ok(ApiEnvelope.success(result));
     }
 
     // ========================================================================

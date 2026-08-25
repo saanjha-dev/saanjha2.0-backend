@@ -98,6 +98,25 @@ public class TeamController {
         return ResponseEntity.ok(ApiEnvelope.success(result.getContent(), paginationMeta(result)));
     }
 
+    /**
+     * P0-1 (Workspace/Team Discovery): every active workspace/team the
+     * caller currently belongs to. Deliberately the blanket
+     * {@code team:participate} check, same reasoning as {@code /v1/teams/
+     * {id}/me} just below — this only ever returns the CALLER's own
+     * memberships (resolved from the security context), so there is no
+     * other-user's-data exposure to gate on a per-resource basis.
+     */
+    @GetMapping("/v1/teams/mine")
+    @RateLimit(action = "get-my-workspaces", baseLimit = 30)
+    @PreAuthorize("hasAuthority('team:participate')")
+    @Operation(summary = "List My Workspaces", description = "Every active/suspended team membership the caller holds, across all projects — populates the Workspace frontend's team list without a guessed teamId.")
+    public ResponseEntity<ApiEnvelope<List<MyTeamMembershipResponse>>> getMyWorkspaces(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Page<MyTeamMembershipResponse> result = teamService.getMyWorkspaces(SecurityUtils.getCurrentUserId(), buildPageable(page, size));
+        return ResponseEntity.ok(ApiEnvelope.success(result.getContent(), paginationMeta(result)));
+    }
+
     @GetMapping("/v1/teams/{id}/me")
     @RateLimit(action = "get-my-membership", baseLimit = 30)
     @PreAuthorize("hasAuthority('team:participate')")

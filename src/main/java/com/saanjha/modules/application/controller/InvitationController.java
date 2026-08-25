@@ -34,14 +34,15 @@ public class InvitationController {
     private final InvitationService invitationService;
 
     // ========================================================================
-    // SENDING (Lead/Admin only, nested under the project)
+    // SENDING (Admin, or per the team's memberInvitationPolicy — nested under the project)
     // ========================================================================
 
     @PostMapping("/v1/projects/{projectId}/invitations")
     @Idempotent(action = "send-invitation")
     @RateLimit(action = "send-invitation", baseLimit = 20, baseTimeSeconds = 3600)
-    @PreAuthorize("hasAuthority('application:moderate') or @projectGuard.isLead(#projectId, authentication.name)")
-    @Operation(summary = "Send an Invitation", description = "Requires an Idempotency-Key header. Does not create Team membership directly — only on acceptance, via event.")
+    @PreAuthorize("hasAuthority('application:moderate') or @projectGuard.isLead(#projectId, authentication.name) or @teamGuard.canInviteToProject(#projectId, authentication.name)")
+    @Operation(summary = "Send an Invitation", description = "Requires an Idempotency-Key header. Does not create Team membership directly — only on acceptance, via event. " +
+            "Authorization follows the project team's configured memberInvitationPolicy (LEAD_ONLY or ANY_MEMBER) — see TeamSecurityGuard.canInviteToProject.")
     public ResponseEntity<ApiEnvelope<InvitationResponse>> send(
             @PathVariable UUID projectId, @Valid @RequestBody SendInvitationRequest request) {
         InvitationResponse response = invitationService.sendInvitation(projectId, SecurityUtils.getCurrentUserId(), request);

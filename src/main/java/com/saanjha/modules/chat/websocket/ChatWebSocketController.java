@@ -88,15 +88,41 @@ public class ChatWebSocketController {
                 new TypingEvent(conversationId, userId, signal.typing()));
     }
 
+    /**
+     * FIX (P0-4, Chat Reaction Persistence): previously broadcast the raw
+     * client payload with no DB write at all - a reload lost every
+     * reaction. Now delegates to {@link ReactionService#addReaction}
+     * (duplicate-safe: unique-per-user-per-emoji, enforced at the DB level)
+     * and broadcasts the persisted per-emoji summary, not the request echo.
+     */
     @MessageMapping("/conversations/{conversationId}/reactions/add")
     public void addReaction(@DestinationVariable UUID conversationId, @Payload ReactRequest request, Principal principal) {
         UUID userId = requireUser(principal);
         requireMember(conversationId, userId);
-        // messageId is embedded in the STOMP payload's destination in a real
-        // client; carried here via ReactRequest for simplicity - see the
-        // equivalent REST endpoint for the canonical request shape.
+        requireMessageInConversation(request.messageId(), conversationId);
+
+        reactionService.addReaction(conversationId, request.messageId(), userId, request.emoji());
+        broadcastReactionState(conversationId, request.messageId(), userId, request.emoji(), "ADDED");
+    }
+
+    /** FIX (P0-4): removal previously had no WebSocket surface at all. */
+    @MessageMapping("/conversations/{conversationId}/reactions/remove")
+    public void removeReaction(@DestinationVariable UUID conversationId, @Payload ReactRequest request, Principal principal) {
+        UUID userId = requireUser(principal);
+        requireMember(conversationId, userId);
+        requireMessageInConversation(request.messageId(), conversationId);
+
+        reactionService.removeReaction(conversationId, request.messageId(), userId, request.emoji());
+        broadcastReactionState(conversationId, request.messageId(), userId, request.emoji(), "REMOVED");
+    }
+
+    private void broadcastReactionState(UUID conversationId, UUID messageId, UUID actorUserId, String emoji, String action) {
+        // No single viewer for a broadcast fan-out, so reactedByMe is computed
+        // against no particular user (always false) - see ReactionEventResponse's javadoc.
+        var reactions = reactionService.summarizeForMessage(messageId, null);
         messagingTemplate.convertAndSend("/topic/conversations/" + conversationId + "/reactions",
-                request);
+                new com.saanjha.modules.chat.dto.ChatResponseDTOs.ReactionEventResponse(
+                        conversationId, messageId, actorUserId, emoji, action, reactions, Instant.now()));
     }
 
     public record MarkReadSignal(UUID lastReadMessageId) {}
@@ -107,6 +133,22 @@ public class ChatWebSocketController {
         readReceiptService.markReadThrough(conversationId, userId, signal.lastReadMessageId());
         messagingTemplate.convertAndSend("/topic/conversations/" + conversationId + "/receipts",
                 new com.saanjha.modules.chat.dto.ChatResponseDTOs.UnreadSummaryResponse(conversationId, 0, Instant.now()));
+    }
+
+    @MessageMapping("/conversations/{conversationId}/webrtc/signal")
+    public void webrtcSignal(@DestinationVariable UUID conversationId, @Payload com.saanjha.modules.chat.dto.WebRTCSignal signal, Principal principal) {
+        UUID userId = requireUser(principal);
+        requireMember(conversationId, userId);
+        
+        // Ensure senderId in signal matches authenticated user
+        com.saanjha.modules.chat.dto.WebRTCSignal securedSignal = new com.saanjha.modules.chat.dto.WebRTCSignal(
+            userId,
+            signal.type(),
+            signal.payload(),
+            signal.callType()
+        );
+        
+        messagingTemplate.convertAndSend("/topic/conversations/" + conversationId + "/webrtc", securedSignal);
     }
 
     @MessageMapping("/presence/heartbeat")
@@ -133,6 +175,14 @@ public class ChatWebSocketController {
     private void requireMember(UUID conversationId, UUID userId) {
         if (!chatGuard.isMember(conversationId, userId.toString())) {
             throw new AppException(ErrorCode.CHAT_NOT_A_MEMBER);
+        }
+    }
+
+    /** TD25 pattern (see ChatSecurityGuard's javadoc): never trust a client-supplied
+     * messageId just because the caller passed the membership check on conversationId. */
+    private void requireMessageInConversation(UUID messageId, UUID conversationId) {
+        if (!chatGuard.messageBelongsToConversation(messageId, conversationId)) {
+            throw new AppException(ErrorCode.NOT_FOUND, "Message not found in this conversation.");
         }
     }
 }

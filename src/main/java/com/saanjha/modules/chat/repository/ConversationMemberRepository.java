@@ -31,7 +31,13 @@ public interface ConversationMemberRepository extends JpaRepository<Conversation
 
     Optional<ConversationMember> findByConversationIdAndUserId(UUID conversationId, UUID userId);
 
+    /** P0-5: batch-loads one viewer's membership rows across several conversations
+     * in a single query - avoids an N+1 when listing a project's conversations. */
+    List<ConversationMember> findByConversationIdInAndUserId(List<UUID> conversationIds, UUID userId);
+
     Page<ConversationMember> findByConversationIdAndStatusIn(UUID conversationId, List<MemberStatus> statuses, Pageable pageable);
+
+    List<ConversationMember> findByConversationId(UUID conversationId);
 
     List<ConversationMember> findByConversationIdAndStatusIn(UUID conversationId, List<MemberStatus> statuses);
 

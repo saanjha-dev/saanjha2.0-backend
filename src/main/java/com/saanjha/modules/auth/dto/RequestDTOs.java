@@ -88,4 +88,42 @@ public final class RequestDTOs {
             @Email
             String email
     ) {}
+
+    public record ChangePasswordVerifyRequest(
+            @NotBlank(message = "OTP code is required")
+            @Size(min = 6, max = 6, message = "OTP must be exactly 6 digits")
+            String otpCode,
+
+            @NotBlank(message = "Password is required")
+            @Size(min = 8, max = 64, message = "Password must be between 8 and 64 characters")
+            @Pattern(regexp = "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=!]).*$",
+                    message = "Password must contain at least one digit, one lowercase, one uppercase, and one special character")
+            String newPassword
+    ) {}
+
+    public record EnableMfaRequest(
+            @NotBlank(message = "TOTP code is required")
+            @Size(min = 6, max = 6, message = "TOTP code must be exactly 6 digits")
+            String totpCode
+    ) {}
+
+    public record VerifyLoginMfaRequest(
+            @NotBlank(message = "MFA token is required")
+            String mfaToken,
+
+            @NotBlank(message = "TOTP code is required")
+            @Size(min = 6, max = 6, message = "TOTP code must be exactly 6 digits")
+            String totpCode,
+
+            @NotBlank(message = "Device fingerprint is required")
+            @Size(max = 255)
+            String deviceId,
+
+            Boolean trustDevice
+    ) {}
+
+    public record DisableMfaRequest(
+            @NotBlank(message = "Password is required")
+            String password
+    ) {}
 }

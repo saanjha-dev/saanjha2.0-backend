@@ -78,8 +78,14 @@ public class TaskController {
     @RateLimit(action = "get-task-board", baseLimit = 60)
     @PreAuthorize("hasAuthority('task:moderate') or @taskGuard.isTeamMemberOfProject(#projectId, authentication.name)")
     @Operation(summary = "Get Task Board", description = "Tasks grouped by status column, so the frontend doesn't assemble a Kanban board from separate list calls.")
-    public ResponseEntity<ApiEnvelope<BoardResponse>> getBoard(@PathVariable UUID projectId) {
-        return ResponseEntity.ok(ApiEnvelope.success(taskService.getBoard(projectId)));
+    public ResponseEntity<ApiEnvelope<BoardResponse>> getBoard(
+            @PathVariable UUID projectId,
+            @RequestParam(required = false) String priority,
+            @RequestParam(required = false) UUID assigneeId,
+            @RequestParam(required = false) UUID createdBy,
+            @RequestParam(required = false) String keyword) {
+        TaskSearchCriteria criteria = new TaskSearchCriteria(null, priority, assigneeId, null, createdBy, null, null, keyword);
+        return ResponseEntity.ok(ApiEnvelope.success(taskService.getBoard(projectId, criteria)));
     }
 
     @GetMapping("/v1/projects/{projectId}/tasks/analytics")
@@ -178,6 +184,14 @@ public class TaskController {
     // CHECKLIST
     // ========================================================================
 
+    @GetMapping("/v1/tasks/{id}/checklist")
+    @RateLimit(action = "get-checklist", baseLimit = 60)
+    @PreAuthorize("hasAuthority('task:moderate') or @taskGuard.isTeamMemberOfTask(#id, authentication.name)")
+    @Operation(summary = "Get Checklist", description = "Items in their stored order — lets the frontend render an existing checklist after a page refresh.")
+    public ResponseEntity<ApiEnvelope<List<ChecklistItemResponse>>> getChecklist(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiEnvelope.success(taskService.getChecklist(id)));
+    }
+
     @PostMapping("/v1/tasks/{id}/checklist")
     @RateLimit(action = "add-checklist-item", baseLimit = 60)
     @PreAuthorize("hasAuthority('task:moderate') or @taskGuard.isTeamMemberOfTask(#id, authentication.name)")
@@ -230,12 +244,12 @@ public class TaskController {
         return ResponseEntity.status(201).body(ApiEnvelope.success(new TaskMutationResponse("Label added.")));
     }
 
-    @DeleteMapping("/v1/tasks/{id}/labels/{labelId}")
+    @DeleteMapping("/v1/tasks/{id}/labels/{labelName}")
     @RateLimit(action = "remove-label", baseLimit = 30)
-    @PreAuthorize("hasAuthority('task:moderate') or @taskGuard.isTeamMemberOfTask(#id, authentication.name)")
+    @PreAuthorize("@taskSecurityGuard.canEdit(authentication, #id)")
     @Operation(summary = "Remove Label")
-    public ResponseEntity<ApiEnvelope<TaskMutationResponse>> removeLabel(@PathVariable UUID id, @PathVariable UUID labelId) {
-        taskService.removeLabel(id, labelId);
+    public ResponseEntity<ApiEnvelope<TaskMutationResponse>> removeLabel(@PathVariable UUID id, @PathVariable String labelName) {
+        taskService.removeLabel(id, labelName);
         return ResponseEntity.ok(ApiEnvelope.success(new TaskMutationResponse("Label removed.")));
     }
 

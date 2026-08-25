@@ -8,6 +8,8 @@ import com.saanjha.modules.application.event.InvitationEvents.*;
 import com.saanjha.modules.application.repository.InvitationRepository;
 import com.saanjha.modules.project.dto.ProjectResponseDTOs.ProjectSnapshot;
 import com.saanjha.modules.project.service.ProjectService;
+import com.saanjha.modules.user.entity.UserProfile;
+import com.saanjha.modules.user.repository.UserProfileRepository;
 import com.saanjha.shared.exception.AppException;
 import com.saanjha.shared.exception.ErrorCode;
 import com.saanjha.shared.security.HtmlSanitizer;
@@ -42,6 +44,7 @@ public class InvitationService {
     private final InvitationRepository invitationRepository;
     private final ProjectService projectService;
     private final ApplicationEventPublisher eventPublisher;
+    private final UserProfileRepository userProfileRepository;
 
     // ========================================================================
     // SENDING
@@ -55,16 +58,22 @@ public class InvitationService {
             throw new AppException(ErrorCode.PROJECT_READ_ONLY,
                     "Cannot invite members to a project that is " + project.status() + ".");
         }
-        if (request.invitedUserId().equals(leadUserId)) {
+        
+        String sanitizedHandle = request.userHandle().startsWith("@") ? request.userHandle().substring(1) : request.userHandle();
+        UserProfile profile = userProfileRepository.findByUniqueHandleIgnoreCase(sanitizedHandle.trim())
+                .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "User handle not found."));
+        UUID invitedUserId = profile.getUserId();
+
+        if (invitedUserId.equals(leadUserId)) {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "You cannot invite yourself to your own project.");
         }
-        if (invitationRepository.existsByProjectIdAndInvitedUserIdAndStatus(projectId, request.invitedUserId(), InvitationStatus.SENT)) {
+        if (invitationRepository.existsByProjectIdAndInvitedUserIdAndStatus(projectId, invitedUserId, InvitationStatus.SENT)) {
             throw new AppException(ErrorCode.CONFLICT, "This user already has a pending invitation to this project.");
         }
 
         Invitation invitation = new Invitation();
         invitation.setProjectId(projectId);
-        invitation.setInvitedUserId(request.invitedUserId());
+        invitation.setInvitedUserId(invitedUserId);
         invitation.setInvitedBy(leadUserId);
         invitation.setPreferredRole(request.preferredRole());
         invitation.setMessage(HtmlSanitizer.sanitize(request.message()));
@@ -72,7 +81,7 @@ public class InvitationService {
         invitation.setExpiresAt(Instant.now().plus(INVITATION_EXPIRY_DAYS, ChronoUnit.DAYS));
 
         invitation = invitationRepository.save(invitation);
-        eventPublisher.publishEvent(new InvitationSentEvent(invitation.getId(), projectId, request.invitedUserId(), leadUserId, Instant.now()));
+        eventPublisher.publishEvent(new InvitationSentEvent(invitation.getId(), projectId, invitedUserId, leadUserId, Instant.now()));
 
         return mapToResponse(invitation);
     }

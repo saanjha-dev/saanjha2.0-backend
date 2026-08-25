@@ -20,7 +20,8 @@ class ProjectStatusTransitionValidatorTest {
             "RECRUITING, IN_PROGRESS",
             "RECRUITING, ARCHIVED",
             "IN_PROGRESS, COMPLETED",
-            "IN_PROGRESS, ARCHIVED"
+            "IN_PROGRESS, ARCHIVED",
+            "COMPLETED, ARCHIVED"
     })
     void allowsDocumentedTransitions(ProjectStatus from, ProjectStatus to) {
         assertThat(ProjectStatusTransitionValidator.isLegal(from, to)).isTrue();
@@ -35,7 +36,6 @@ class ProjectStatusTransitionValidatorTest {
             "RECRUITING, DRAFT",
             "IN_PROGRESS, DRAFT",
             "IN_PROGRESS, RECRUITING",
-            "COMPLETED, ARCHIVED",
             "COMPLETED, DRAFT",
             "ARCHIVED, DRAFT",
             "ARCHIVED, RECRUITING"
@@ -50,7 +50,9 @@ class ProjectStatusTransitionValidatorTest {
     @Test
     void terminalStatesHaveNoOutboundTransitions() {
         for (ProjectStatus target : ProjectStatus.values()) {
-            assertThat(ProjectStatusTransitionValidator.isLegal(ProjectStatus.COMPLETED, target)).isFalse();
+            if (target != ProjectStatus.ARCHIVED) {
+                assertThat(ProjectStatusTransitionValidator.isLegal(ProjectStatus.COMPLETED, target)).isFalse();
+            }
             assertThat(ProjectStatusTransitionValidator.isLegal(ProjectStatus.ARCHIVED, target)).isFalse();
         }
     }

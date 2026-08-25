@@ -30,6 +30,9 @@ public class Task extends BaseAuditEntity {
     @Column(name = "project_id", nullable = false)
     private UUID projectId;
 
+    @Column(name = "task_key", length = 20)
+    private String taskKey;
+
     @Column(nullable = false, length = 200)
     private String title;
 
