@@ -27,7 +27,8 @@ public class RateLimitAspect {
 
         String identifier = getClientIdentifier();
         // Fallback to method name if action string isn't provided
-        String actionName = rateLimitAnnotation.action().isEmpty() ? joinPoint.getSignature().getName() : rateLimitAnnotation.action();
+        String actionName = rateLimitAnnotation.action().isEmpty() ? joinPoint.getSignature().getName()
+                : rateLimitAnnotation.action();
         String redisKey = "rate_limit:" + actionName + ":" + identifier;
 
         Long currentCount = redisTemplate.opsForValue().increment(redisKey);
@@ -37,19 +38,14 @@ public class RateLimitAspect {
             redisTemplate.expire(redisKey, Duration.ofSeconds(rateLimitAnnotation.baseTimeSeconds()));
         }
 
-        // Did they cross the limit? Apply Exponential Backoff
+        // Did they cross the limit?
         if (currentCount != null && currentCount > rateLimitAnnotation.baseLimit()) {
-            long strikes = currentCount - rateLimitAnnotation.baseLimit();
-            long penaltyMultiplier = (long) Math.pow(2, strikes - 1);
-            long exponentialPenalty = rateLimitAnnotation.baseTimeSeconds() * penaltyMultiplier;
-
-            // Overwrite the Redis TTL with the new, longer penalty
-            redisTemplate.expire(redisKey, Duration.ofSeconds(exponentialPenalty));
+            Long expireTime = redisTemplate.getExpire(redisKey);
+            long secondsLeft = (expireTime != null && expireTime > 0) ? expireTime : rateLimitAnnotation.baseTimeSeconds();
 
             throw new AppException(
-                    ErrorCode.TOO_MANY_REQUESTS, // Ensure this maps to HTTP 429 in your GlobalExceptionHandler
-                    rateLimitAnnotation.errorMessage() + ". Please try after " + exponentialPenalty + " seconds."
-            );
+                    ErrorCode.TOO_MANY_REQUESTS,
+                    rateLimitAnnotation.errorMessage() + ". Please try after " + secondsLeft + " seconds.");
         }
 
         return joinPoint.proceed();

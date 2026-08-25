@@ -62,7 +62,7 @@ class PortfolioBadgeEngineTest {
 
     @Test
     void openSourceTag_awardsOpenSourceContributorBadge() {
-        ProjectSnapshot snapshot = new ProjectSnapshot(UUID.randomUUID(), "Title", "slug", "WEB", "desc", List.of("open-source", "react"));
+        ProjectSnapshot snapshot = new ProjectSnapshot(UUID.randomUUID(), "Title", "slug", "WEB", "desc", List.of("open-source", "react"), List.of());
         when(badgeRepository.existsByUserIdAndBadgeType(userId, BadgeType.OPEN_SOURCE_CONTRIBUTOR)).thenReturn(false);
 
         badgeEngine.evaluateOnEntryGenerated(userId, false, false, snapshot, 0, 0);
@@ -104,7 +104,7 @@ class PortfolioBadgeEngineTest {
 
     @Test
     void projectHasBackendTags_isCaseInsensitive() {
-        ProjectSnapshot snapshot = new ProjectSnapshot(UUID.randomUUID(), "Title", "slug", "WEB", "desc", List.of("Spring-Boot"));
+        ProjectSnapshot snapshot = new ProjectSnapshot(UUID.randomUUID(), "Title", "slug", "WEB", "desc", List.of("Spring-Boot"), List.of());
         assertThat(badgeEngine.projectHasBackendTags(snapshot)).isTrue();
     }
 

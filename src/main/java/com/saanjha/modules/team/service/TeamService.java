@@ -491,6 +491,25 @@ public class TeamService {
                 .orElse(false);
     }
 
+    /**
+     * FIX (P0-2, Invitation Policy Enforcement): backs {@code
+     * TeamSecurityGuard.canInviteToProject}. {@code TeamSettings
+     * .memberInvitationPolicy} was stored and returned in every
+     * {@code TeamResponse} but never actually read by any authorization
+     * check — {@code InvitationController.send} was hardcoded to Lead-only,
+     * making the setting purely decorative (see {@code TeamSettings}'s own
+     * javadoc, which flagged this as an explicit, documented extension
+     * point rather than a silent gap). Defaults to {@code LEAD_ONLY} — the
+     * same safe default {@code TeamSettings.defaults()} uses — if no team
+     * has been provisioned yet for this project.
+     */
+    @Transactional(readOnly = true)
+    public TeamSettings.MemberInvitationPolicy getInvitationPolicyForProject(UUID projectId) {
+        return teamRepository.findByProjectId(projectId)
+                .map(team -> readSettings(team.getSettingsJson()).memberInvitationPolicy())
+                .orElse(TeamSettings.MemberInvitationPolicy.LEAD_ONLY);
+    }
+
     @Transactional(readOnly = true)
     public TeamMetricsResponse getMetrics(UUID teamId) {
         Team team = getTeamEntityOrThrow(teamId);
@@ -506,6 +525,26 @@ public class TeamService {
         return membershipRepository.findByTeam_IdAndUserIdAndStatusIn(teamId, userId, LIVE_STATUSES)
                 .map(m -> new CurrentUserMembershipResponse(true, mapToDetailResponse(m)))
                 .orElse(new CurrentUserMembershipResponse(false, null));
+    }
+
+    /**
+     * P0-1 (Workspace/Team Discovery): every active workspace/team the
+     * calling user currently belongs to — the read model the Workspace
+     * frontend needs to populate its team switcher without guessing at a
+     * teamId first. Reuses {@code MembershipRepository}'s existing
+     * {@code @EntityGraph}-annotated query (no duplicated repository logic)
+     * and {@link #mapToResponse} for the nested team shape, so this is
+     * purely a projection over data the module already reads elsewhere.
+     */
+    @Transactional(readOnly = true)
+    public Page<MyTeamMembershipResponse> getMyWorkspaces(UUID userId, Pageable pageable) {
+        return membershipRepository.findByUserIdAndStatusIn(userId, LIVE_STATUSES, pageable)
+                .map(membership -> new MyTeamMembershipResponse(
+                        mapToResponse(membership.getTeam()),
+                        membership.getId(),
+                        membership.getRole().name(),
+                        membership.getStatus().name(),
+                        membership.getJoinedAt()));
     }
 
     @Transactional(readOnly = true)

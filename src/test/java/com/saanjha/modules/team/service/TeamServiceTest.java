@@ -16,6 +16,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -263,6 +267,76 @@ class TeamServiceTest {
         assertThat(member.getStatus()).isEqualTo(MembershipStatus.LEFT);
         assertThat(team.getCurrentMemberCount()).isEqualTo(1);
         verify(eventPublisher).publishEvent(argThat(e -> e.getClass().getSimpleName().equals("MemberLeftEvent")));
+    }
+
+    // ========================================================================
+    // P0-1: Workspace/Team Discovery
+    // ========================================================================
+
+    @Test
+    void getMyWorkspaces_returnsEveryLiveMembership_mappedWithTeamAndRole() {
+        Team team = activeTeam();
+        Membership membership = leadMembership(team, leadUserId);
+        Pageable pageable = PageRequest.of(0, 20);
+        when(membershipRepository.findByUserIdAndStatusIn(eq(leadUserId), any(), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(membership)));
+
+        Page<com.saanjha.modules.team.dto.TeamResponseDTOs.MyTeamMembershipResponse> result =
+                teamService.getMyWorkspaces(leadUserId, pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        var row = result.getContent().get(0);
+        assertThat(row.team().id()).isEqualTo(teamId);
+        assertThat(row.team().projectId()).isEqualTo(projectId);
+        assertThat(row.role()).isEqualTo("LEAD");
+        assertThat(row.membershipStatus()).isEqualTo("ACTIVE");
+        assertThat(row.membershipId()).isEqualTo(membership.getId());
+    }
+
+    @Test
+    void getMyWorkspaces_returnsEmptyPage_whenUserHasNoLiveMemberships() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(membershipRepository.findByUserIdAndStatusIn(eq(leadUserId), any(), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        Page<com.saanjha.modules.team.dto.TeamResponseDTOs.MyTeamMembershipResponse> result =
+                teamService.getMyWorkspaces(leadUserId, pageable);
+
+        assertThat(result.getContent()).isEmpty();
+    }
+
+    // ========================================================================
+    // P0-2: Invitation Policy Enforcement
+    // ========================================================================
+
+    @Test
+    void getInvitationPolicyForProject_defaultsToLeadOnly_whenNoTeamExistsYet() {
+        when(teamRepository.findByProjectId(projectId)).thenReturn(Optional.empty());
+
+        assertThat(teamService.getInvitationPolicyForProject(projectId))
+                .isEqualTo(TeamSettings.MemberInvitationPolicy.LEAD_ONLY);
+    }
+
+    @Test
+    void getInvitationPolicyForProject_defaultsToLeadOnly_whenSettingsAreBlank() {
+        Team team = activeTeam(); // settingsJson == "{}"
+        when(teamRepository.findByProjectId(projectId)).thenReturn(Optional.of(team));
+
+        assertThat(teamService.getInvitationPolicyForProject(projectId))
+                .isEqualTo(TeamSettings.MemberInvitationPolicy.LEAD_ONLY);
+    }
+
+    @Test
+    void getInvitationPolicyForProject_readsAnyMember_whenConfigured() throws Exception {
+        Team team = activeTeam();
+        TeamSettings settings = new TeamSettings(
+                TeamSettings.RosterVisibility.PUBLIC, false,
+                TeamSettings.ActivityVisibility.MEMBERS_ONLY, TeamSettings.MemberInvitationPolicy.ANY_MEMBER);
+        team.setSettingsJson(new ObjectMapper().writeValueAsString(settings));
+        when(teamRepository.findByProjectId(projectId)).thenReturn(Optional.of(team));
+
+        assertThat(teamService.getInvitationPolicyForProject(projectId))
+                .isEqualTo(TeamSettings.MemberInvitationPolicy.ANY_MEMBER);
     }
 
     // ========================================================================

@@ -12,6 +12,7 @@ import com.saanjha.shared.exception.AppException;
 import com.saanjha.shared.exception.ErrorCode;
 import com.saanjha.shared.ratelimit.RateLimit;
 import com.saanjha.shared.security.SecurityUtils;
+import com.saanjha.shared.storage.CloudinaryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -20,13 +21,17 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -52,6 +57,7 @@ public class MessageController {
     private final ChatSearchService chatSearchService;
     private final ChatSecurityGuard chatGuard;
     private final SimpMessagingTemplate messagingTemplate;
+    private final CloudinaryService cloudinaryService;
 
     @GetMapping("/v1/chats/conversations/{conversationId}/messages")
     @RateLimit(action = "get-message-history", baseLimit = 60)
@@ -102,6 +108,47 @@ public class MessageController {
         messagingTemplate.convertAndSend("/topic/conversations/" + conversationId + "/messages",
                 Map.of("messageId", messageId, "deleted", true));
         return ResponseEntity.ok(ApiEnvelope.success(new ChatMutationResponse("Message deleted.", "OK")));
+    }
+
+    /**
+     * Upload a file for use in a chat message. The frontend calls this BEFORE
+     * sending the STOMP message, then includes the returned metadata as an
+     * attachment in the STOMP payload. This separation is necessary because
+     * STOMP/WebSocket can't handle multipart binary uploads.
+     *
+     * Flow: Frontend picks file → POST /upload → gets attachment metadata →
+     * includes in STOMP /send payload → MessageService persists the reference.
+     */
+    @PostMapping(value = "/v1/chats/conversations/{conversationId}/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RateLimit(action = "upload-chat-file", baseLimit = 15)
+    @PreAuthorize("hasAuthority('chat:participate') and @chatGuard.isMember(#conversationId, authentication.name)")
+    @Operation(summary = "Upload Chat File", description = "Upload a file (image, document, audio, video) for use in a chat message. Max 100MB.")
+    public ResponseEntity<ApiEnvelope<Map<String, Object>>> uploadFile(
+            @PathVariable UUID conversationId,
+            @RequestParam("file") MultipartFile file) {
+        UUID userId = SecurityUtils.getCurrentUserId();
+
+        Map<String, Object> cloudinaryResult = cloudinaryService.uploadFile(file, "chat/" + conversationId, userId);
+
+        // Compute SHA-256 checksum for integrity verification
+        String checksum;
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            checksum = HexFormat.of().formatHex(digest.digest(file.getBytes()));
+        } catch (Exception e) {
+            checksum = "unknown";
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("filename", file.getOriginalFilename());
+        response.put("mimeType", file.getContentType());
+        response.put("sizeBytes", file.getSize());
+        response.put("checksum", checksum);
+        response.put("storageProvider", "CLOUDINARY");
+        response.put("storageReference", cloudinaryResult.get("secure_url"));
+        response.put("publicId", cloudinaryResult.get("public_id"));
+
+        return ResponseEntity.ok(ApiEnvelope.success(response));
     }
 
     @GetMapping("/v1/chats/conversations/{conversationId}/search")
@@ -156,3 +203,4 @@ public class MessageController {
         return meta;
     }
 }
+

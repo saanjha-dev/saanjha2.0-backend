@@ -6,6 +6,7 @@ import org.mockito.ArgumentCaptor;
 import com.saanjha.modules.task.dto.TaskRequestDTOs.*;
 import com.saanjha.modules.task.dto.TaskResponseDTOs.TaskResponse;
 import com.saanjha.modules.task.entity.*;
+import com.saanjha.modules.task.entity.ProjectTaskSequence;
 import com.saanjha.modules.task.repository.*;
 import com.saanjha.modules.team.dto.TeamResponseDTOs.TeamResponse;
 import com.saanjha.modules.team.service.TeamSecurityGuard;
@@ -38,6 +39,7 @@ class TaskServiceTest {
     @Mock private TaskAttachmentRepository attachmentRepository;
     @Mock private TaskHistoryRepository historyRepository;
     @Mock private TaskActivityRepository activityRepository;
+    @Mock private ProjectTaskSequenceRepository sequenceRepository;
     @Mock private ProjectService projectService;
     @Mock private TeamService teamService;
     @Mock private TeamSecurityGuard teamSecurityGuard;
@@ -52,12 +54,19 @@ class TaskServiceTest {
     @BeforeEach
     void setUp() {
         taskService = new TaskService(taskRepository, checklistItemRepository, labelRepository, dependencyRepository,
-                watcherRepository, attachmentRepository, historyRepository, activityRepository,
+                watcherRepository, attachmentRepository, historyRepository, activityRepository, sequenceRepository,
                 projectService, teamService, teamSecurityGuard, eventPublisher);
         projectId = UUID.randomUUID();
         reporterId = UUID.randomUUID();
         assigneeId = UUID.randomUUID();
         lenient().when(taskRepository.save(any(Task.class))).thenAnswer(inv -> inv.getArgument(0));
+        lenient().when(projectService.getProjectTitle(projectId)).thenReturn("Test Project");
+        
+        ProjectTaskSequence mockSeq = new ProjectTaskSequence();
+        mockSeq.setProjectId(projectId);
+        mockSeq.setTaskPrefix("TES");
+        mockSeq.setCurrentSequence(1);
+        lenient().when(sequenceRepository.findByProjectIdForUpdate(projectId)).thenReturn(java.util.Optional.of(mockSeq));
     }
 
     private ProjectSnapshot inProgressSnapshot() {
@@ -262,6 +271,59 @@ class TaskServiceTest {
         assertThatThrownBy(() -> taskService.addDependency(taskA.getId(), reporterId, request))
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+    }
+
+    // ========================================================================
+    // P0-3: Checklist Read API
+    // ========================================================================
+
+    @Test
+    void getChecklist_returnsItemsInStoredOrder() {
+        Task task = backlogTask();
+        when(taskRepository.findById(task.getId())).thenReturn(Optional.of(task));
+
+        ChecklistItem first = new ChecklistItem();
+        first.setId(UUID.randomUUID());
+        first.setTask(task);
+        first.setText("Write the tests");
+        first.setPosition(0);
+
+        ChecklistItem second = new ChecklistItem();
+        second.setId(UUID.randomUUID());
+        second.setTask(task);
+        second.setText("Ship it");
+        second.setPosition(1);
+        second.setCompleted(true);
+
+        when(checklistItemRepository.findByTask_IdOrderByPositionAsc(task.getId()))
+                .thenReturn(java.util.List.of(first, second));
+
+        var result = taskService.getChecklist(task.getId());
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).text()).isEqualTo("Write the tests");
+        assertThat(result.get(0).completed()).isFalse();
+        assertThat(result.get(1).text()).isEqualTo("Ship it");
+        assertThat(result.get(1).completed()).isTrue();
+    }
+
+    @Test
+    void getChecklist_returnsEmptyList_whenTaskHasNoItems() {
+        Task task = backlogTask();
+        when(taskRepository.findById(task.getId())).thenReturn(Optional.of(task));
+        when(checklistItemRepository.findByTask_IdOrderByPositionAsc(task.getId())).thenReturn(java.util.List.of());
+
+        assertThat(taskService.getChecklist(task.getId())).isEmpty();
+    }
+
+    @Test
+    void getChecklist_throwsNotFound_whenTaskDoesNotExist() {
+        UUID missingTaskId = UUID.randomUUID();
+        when(taskRepository.findById(missingTaskId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> taskService.getChecklist(missingTaskId))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND));
     }
 
     // ========================================================================

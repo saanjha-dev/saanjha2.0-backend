@@ -23,6 +23,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
@@ -136,6 +137,15 @@ public class ProjectService {
         );
     }
 
+    /**
+     * Internal cross-module call to retrieve just the project title (e.g., for Task prefixes).
+     * Bypasses standard read visibility like getSnapshot does.
+     */
+    @Transactional(readOnly = true)
+    public String getProjectTitle(UUID projectId) {
+        return getProjectOrThrow(projectId).getTitle();
+    }
+
     // ========================================================================
     // TEAM-FACING SYNC (Project's half of the contract described in the Team
     // module's architecture spec, Section 10/11: Team is authoritative for
@@ -145,14 +155,14 @@ public class ProjectService {
     // only from this module's own event listener. See ProjectTeamEventListener.
     // ========================================================================
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void syncLeadership(UUID projectId, UUID newLeadUserId) {
         Project project = getProjectOrThrow(projectId);
         project.setLeadUserId(newLeadUserId);
         projectRepository.save(project);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void syncTeamSize(UUID projectId, int currentTeamSize) {
         Project project = getProjectOrThrow(projectId);
         // Idempotent overwrite, not a delta — see TeamEvents' Javadoc on why.
@@ -204,13 +214,20 @@ public class ProjectService {
         Project project = getProjectOrThrow(projectId);
         assertMutable(project);
 
-        String normalizedSkill = request.skillName().trim();
-        if (requirementRepository.existsByProject_IdAndSkillNameIgnoreCase(projectId, normalizedSkill)) {
-            throw new AppException(ErrorCode.CONFLICT, "This project already has a requirement for that skill.");
+        String normalizedRole = request.roleName().trim();
+        if (requirementRepository.existsByProject_IdAndRoleNameIgnoreCase(projectId, normalizedRole)) {
+            throw new AppException(ErrorCode.CONFLICT, "This project already has a requirement for that role.");
         }
 
         ProjectRequirement requirement = new ProjectRequirement();
-        requirement.setSkillName(normalizedSkill);
+        requirement.setRoleName(normalizedRole);
+        
+        if (request.skills() != null) {
+            requirement.getSkills().addAll(request.skills().stream()
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList());
+        }
         requirement.setSkillLevel(request.skillLevel().toUpperCase(Locale.ROOT));
         requirement.setSlotsAvailable(request.slotsAvailable());
         project.addRequirement(requirement);
@@ -370,7 +387,7 @@ public class ProjectService {
         switch (to) {
             case RECRUITING -> {
                 List<String> requiredSkills = project.getRequirements().stream()
-                        .map(ProjectRequirement::getSkillName)
+                        .map(ProjectRequirement::getRoleName)
                         .sorted()
                         .toList();
                 eventPublisher.publishEvent(new ProjectPublishedEvent(
@@ -402,7 +419,7 @@ public class ProjectService {
         }
 
         List<String> requiredSkills = project.getRequirements().stream()
-                .map(ProjectRequirement::getSkillName)
+                .map(ProjectRequirement::getRoleName)
                 .sorted()
                 .toList();
         List<String> tags = project.getTags().stream()
@@ -479,8 +496,8 @@ public class ProjectService {
 
     private ProjectResponse mapToResponse(Project project) {
         List<ProjectRequirementResponse> requirements = project.getRequirements().stream()
-                .sorted(Comparator.comparing(ProjectRequirement::getSkillName))
-                .map(r -> new ProjectRequirementResponse(r.getId(), r.getSkillName(), r.getSkillLevel(), r.getSlotsAvailable()))
+                .sorted(Comparator.comparing(ProjectRequirement::getRoleName))
+                .map(r -> new ProjectRequirementResponse(r.getId(), r.getRoleName(), r.getSkills().stream().toList(), r.getSkillLevel(), r.getSlotsAvailable()))
                 .collect(Collectors.toList());
 
         List<String> tagNames = project.getTags().stream()

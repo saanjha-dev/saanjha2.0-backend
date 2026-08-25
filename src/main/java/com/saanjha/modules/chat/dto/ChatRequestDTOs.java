@@ -15,6 +15,11 @@ public class ChatRequestDTOs {
             @Size(max = 150) String name,
             @Size(max = 500) String topic,
 
+            /** Optional project linkage for GROUP conversations. When set, the
+             *  conversation's {@code project_id} column is populated, making it
+             *  discoverable via {@code GET /v1/projects/{projectId}/conversations}. */
+            UUID projectId,
+
             @NotEmpty(message = "At least one initial member is required")
             List<UUID> memberUserIds
     ) {}
@@ -56,7 +61,14 @@ public class ChatRequestDTOs {
             @NotBlank @Size(max = 8000) String body
     ) {}
 
+    /**
+     * FIX (P0-4, Chat Reaction Persistence): {@code messageId} was missing
+     * entirely — the WebSocket handler had no way to know which message a
+     * reaction targeted, so it could only re-broadcast the raw payload
+     * rather than ever calling {@code ReactionService}.
+     */
     public record ReactRequest(
+            @NotNull UUID messageId,
             @NotBlank @Size(max = 64) String emoji
     ) {}
 

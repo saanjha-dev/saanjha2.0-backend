@@ -1,0 +1,12 @@
+CREATE SCHEMA IF NOT EXISTS fdb;
+
+CREATE TABLE fdb.feedback (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    category VARCHAR(255) NOT NULL,
+    rating INT,
+    content TEXT,
+    page_url VARCHAR(2048),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

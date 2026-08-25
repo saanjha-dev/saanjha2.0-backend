@@ -5,6 +5,8 @@ import com.saanjha.modules.user.entity.UserPreferences;
 import com.saanjha.modules.user.entity.UserProfile;
 import com.saanjha.modules.user.repository.UserPreferencesRepository;
 import com.saanjha.modules.user.repository.UserProfileRepository;
+import com.saanjha.modules.portfolio.event.PortfolioEvents.PortfolioGeneratedEvent;
+import com.saanjha.modules.user.service.UserProfileService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +46,14 @@ public class UserModuleEventListener {
     private static final Logger log = LoggerFactory.getLogger(UserModuleEventListener.class);
     private final UserProfileRepository profileRepository;
     private final UserPreferencesRepository preferencesRepository;
+    private final UserProfileService profileService;
+
+    @Async
+    @TransactionalEventListener
+    public void onPortfolioGenerated(PortfolioGeneratedEvent event) {
+        log.info("Incrementing projects completed for user: {}", event.userId());
+        profileService.incrementProjectsCompleted(event.userId());
+    }
 
     @Async
     @TransactionalEventListener

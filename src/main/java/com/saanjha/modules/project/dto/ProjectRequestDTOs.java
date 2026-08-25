@@ -1,5 +1,7 @@
 package com.saanjha.modules.project.dto;
 
+import java.util.List;
+
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -60,9 +62,12 @@ public class ProjectRequestDTOs {
     ) {}
 
     public record AddRequirementRequest(
-            @NotBlank(message = "Skill name is required")
+            @NotBlank(message = "Role name is required")
             @Size(max = 100)
-            String skillName,
+            String roleName,
+
+            @Size(max = 20, message = "Cannot exceed 20 skills per role")
+            List<@NotBlank(message = "Skill name cannot be blank") @Size(max = 100) String> skills,
 
             @NotBlank(message = "Skill level is required")
             @Pattern(regexp = SKILL_LEVEL_PATTERN, message = "Level must be BEGINNER, INTERMEDIATE, or ADVANCED")

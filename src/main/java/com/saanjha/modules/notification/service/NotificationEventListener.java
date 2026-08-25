@@ -128,7 +128,7 @@ public class NotificationEventListener {
     public void onApplicationSubmitted(ApplicationSubmittedEvent event) {
         safely(() -> orchestrationService.enqueue(new EnqueueCommand(
                 event.leadUserId(), NotificationEventType.APPLICATION_SUBMITTED, event.applicationId().toString(),
-                vars("title", "New application received", "actionUrl", "/applications/" + event.applicationId()))),
+                vars("title", "New application received", "actionUrl", "/projects/" + event.projectId() + "/applications"))),
                 "notify lead of application submission " + event.applicationId());
     }
 
@@ -144,7 +144,7 @@ public class NotificationEventListener {
     public void onApplicationShortlisted(ApplicationShortlistedEvent event) {
         safely(() -> orchestrationService.enqueue(new EnqueueCommand(
                 event.applicantId(), NotificationEventType.APPLICATION_SHORTLISTED, event.applicationId().toString(),
-                vars("title", "You've been shortlisted!", "actionUrl", "/applications/" + event.applicationId()))),
+                vars("title", "You've been shortlisted!", "actionUrl", "/projects/" + event.projectId()))),
                 "notify applicant of shortlisting " + event.applicationId());
     }
 
@@ -188,7 +188,7 @@ public class NotificationEventListener {
     public void onInvitationSent(InvitationSentEvent event) {
         safely(() -> orchestrationService.enqueue(new EnqueueCommand(
                 event.invitedUserId(), NotificationEventType.INVITATION_SENT, event.invitationId().toString(),
-                vars("title", "You've been invited to join a project", "actionUrl", "/invitations/" + event.invitationId()))),
+                vars("title", "You've been invited to join a project", "actionUrl", "/projects/" + event.projectId()))),
                 "notify invitee of invitation " + event.invitationId());
     }
 
@@ -338,7 +338,7 @@ public class NotificationEventListener {
         }
         safely(() -> orchestrationService.enqueue(new EnqueueCommand(
                 event.assigneeId(), NotificationEventType.TASK_ASSIGNED, event.taskId() + ":" + event.occurredAt(),
-                vars("title", "You were assigned a new task", "actionUrl", "/tasks/" + event.taskId()))),
+                vars("title", "You were assigned a new task", "actionUrl", "/workspace/" + event.projectId() + "/tasks/" + event.taskId()))),
                 "notify assignee of task assignment " + event.taskId());
     }
 
@@ -357,7 +357,7 @@ public class NotificationEventListener {
         }
         safely(() -> orchestrationService.enqueue(new EnqueueCommand(
                 event.reporterId(), NotificationEventType.TASK_COMPLETED_FOR_REPORTER, event.taskId().toString(),
-                vars("title", "A task you reported was completed", "actionUrl", "/tasks/" + event.taskId()))),
+                vars("title", "A task you reported was completed", "actionUrl", "/workspace/" + event.projectId() + "/tasks/" + event.taskId()))),
                 "notify reporter of task completion " + event.taskId());
     }
 

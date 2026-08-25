@@ -8,13 +8,12 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+
 @SpringBootApplication
-// RE-ENABLED: this was commented out, which silently disabled @CreatedDate/@LastModifiedDate
-// population on every entity extending BaseAuditEntity across ALL modules (auth, user, and now
-// project). Without it, createdAt/updatedAt columns rely purely on DB DEFAULT NOW() and never
-// update on modification. Flagged as a pre-existing correctness gap and fixed here since the
-// Project module's optimistic-locking and audit-trail guarantees depend on it working correctly.
-//@EnableJpaAuditing
 @EnableAsync
 @EnableScheduling
 @EnableConfigurationProperties(RsaKeyProperties.class)
@@ -24,4 +23,15 @@ public class Application {
         SpringApplication.run(Application.class, args);
     }
 
+    @Bean
+    @Primary
+    public TaskExecutor taskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(5);
+        executor.setMaxPoolSize(20);
+        executor.setQueueCapacity(50);
+        executor.setThreadNamePrefix("Async-");
+        executor.initialize();
+        return executor;
+    }
 }

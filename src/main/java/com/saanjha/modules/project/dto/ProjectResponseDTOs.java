@@ -40,7 +40,8 @@ public class ProjectResponseDTOs {
 
     public record ProjectRequirementResponse(
             UUID id,
-            String skillName,
+            String roleName,
+            List<String> skills,
             String skillLevel,
             int slotsAvailable
     ) {}

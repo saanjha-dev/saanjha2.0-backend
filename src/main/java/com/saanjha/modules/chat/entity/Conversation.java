@@ -40,6 +40,22 @@ public class Conversation extends BaseAuditEntity {
     @Column(name = "team_id")
     private UUID teamId;
 
+    /**
+     * Canonical, order-independent participant pair for DIRECT_MESSAGE
+     * conversations only (null for every other type). {@code directUserLow}
+     * is always the lexicographically smaller of the two participant UUIDs
+     * - see {@code ConversationService#getOrCreateDirectConversation} - so
+     * that "A messages B" and "B messages A" always resolve to the same
+     * unordered key. Guarded by {@code uq_conv_direct_pair} (V28); the
+     * columns exist purely to make that index possible, mirroring how
+     * {@code projectId}/{@code type} back {@code uq_conv_project_type}.
+     */
+    @Column(name = "direct_user_low")
+    private UUID directUserLow;
+
+    @Column(name = "direct_user_high")
+    private UUID directUserHigh;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private ConversationType type;

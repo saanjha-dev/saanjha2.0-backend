@@ -97,7 +97,7 @@ class PortfolioGenerationServiceTest {
         lenient().when(summaryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         lenient().when(projectSnapshotProvider.getSnapshot(any())).thenReturn(
-                Optional.of(new ProjectSnapshot(projectId, "Saanjha Backend", "saanjha-backend", "WEB", "A cool project", List.of("java", "spring-boot"))));
+                Optional.of(new ProjectSnapshot(projectId, "Saanjha Backend", "saanjha-backend", "WEB", "A cool project", List.of("java", "spring-boot"), List.of())));
     }
 
     private String key(UUID projectId, UUID userId) {
