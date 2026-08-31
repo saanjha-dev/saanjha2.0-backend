@@ -6,6 +6,7 @@ import com.saanjha.modules.chat.entity.MemberStatus;
 import com.saanjha.modules.chat.entity.Message;
 import com.saanjha.modules.chat.repository.ConversationMemberRepository;
 import com.saanjha.modules.chat.repository.MessageRepository;
+import com.saanjha.modules.team.service.TeamSecurityGuard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,6 +35,7 @@ class ChatSecurityGuardTest {
 
     @Mock private ConversationMemberRepository memberRepository;
     @Mock private MessageRepository messageRepository;
+    @Mock private TeamSecurityGuard teamSecurityGuard;
 
     private ChatSecurityGuard guard;
 
@@ -44,7 +46,7 @@ class ChatSecurityGuardTest {
 
     @BeforeEach
     void setUp() {
-        guard = new ChatSecurityGuard(memberRepository, messageRepository);
+        guard = new ChatSecurityGuard(memberRepository, messageRepository, teamSecurityGuard);
         conversationId = UUID.randomUUID();
         otherConversationId = UUID.randomUUID();
         memberUserId = UUID.randomUUID();
@@ -127,5 +129,21 @@ class ChatSecurityGuardTest {
                 .thenReturn(Optional.of(message));
 
         assertThat(guard.messageBelongsToConversation(messageId, conversationId)).isTrue();
+    }
+
+    @Test
+    void isTeamMemberOfProject_delegatesToTeamSecurityGuard_true() {
+        UUID projectId = UUID.randomUUID();
+        when(teamSecurityGuard.isMemberOfProjectsTeam(projectId, memberUserId.toString())).thenReturn(true);
+
+        assertThat(guard.isTeamMemberOfProject(projectId, memberUserId.toString())).isTrue();
+    }
+
+    @Test
+    void isTeamMemberOfProject_delegatesToTeamSecurityGuard_false() {
+        UUID projectId = UUID.randomUUID();
+        when(teamSecurityGuard.isMemberOfProjectsTeam(projectId, strangerUserId.toString())).thenReturn(false);
+
+        assertThat(guard.isTeamMemberOfProject(projectId, strangerUserId.toString())).isFalse();
     }
 }

@@ -20,6 +20,7 @@ public class ProjectSnapshotProviderImpl implements ProjectSnapshotProvider {
 
     private final ProjectRepository projectRepository;
     private final ProjectTagRepository projectTagRepository;
+    private final com.saanjha.modules.project.repository.ProjectRequirementRepository projectRequirementRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -28,13 +29,17 @@ public class ProjectSnapshotProviderImpl implements ProjectSnapshotProvider {
             List<String> tags = projectTagRepository.findByProject_Id(projectId).stream()
                     .map(ProjectTag::getTagName)
                     .toList();
+            List<ProjectSnapshotProvider.RequirementSnapshot> requirements = projectRequirementRepository.findByProject_Id(projectId).stream()
+                    .map(req -> new ProjectSnapshotProvider.RequirementSnapshot(req.getRoleName(), req.getSkills(), req.getSkillLevel()))
+                    .toList();
             return new ProjectSnapshot(
                     project.getId(),
                     project.getTitle(),
                     project.getSlug(),
                     project.getCategory(),
                     excerpt(project.getDescription()),
-                    tags
+                    tags,
+                    requirements
             );
         });
     }

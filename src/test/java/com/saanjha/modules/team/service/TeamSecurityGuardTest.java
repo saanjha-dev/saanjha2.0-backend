@@ -91,4 +91,75 @@ class TeamSecurityGuardTest {
         assertThat(guard.isMember(teamId, strangerUserId.toString())).isFalse();
         verifyNoInteractions(teamService);
     }
+
+    // ========================================================================
+    // P0-2: Invitation Policy Enforcement
+    // ========================================================================
+
+    @Test
+    void canInviteToProject_leadOnlyPolicy_permitsTheLead() {
+        UUID projectId = UUID.randomUUID();
+        com.saanjha.modules.team.entity.Team team = new com.saanjha.modules.team.entity.Team();
+        team.setId(teamId);
+        when(teamService.getInvitationPolicyForProject(projectId))
+                .thenReturn(com.saanjha.modules.team.entity.TeamSettings.MemberInvitationPolicy.LEAD_ONLY);
+        when(teamRepository.findByProjectId(projectId)).thenReturn(Optional.of(team));
+
+        com.saanjha.modules.team.entity.Membership lead = new com.saanjha.modules.team.entity.Membership();
+        lead.setUserId(memberUserId);
+        when(membershipRepository.findByTeam_IdAndRoleAndStatus(
+                teamId, com.saanjha.modules.team.entity.MembershipRole.LEAD, MembershipStatus.ACTIVE))
+                .thenReturn(Optional.of(lead));
+
+        assertThat(guard.canInviteToProject(projectId, memberUserId.toString())).isTrue();
+    }
+
+    @Test
+    void canInviteToProject_leadOnlyPolicy_deniesAnOrdinaryMember() {
+        UUID projectId = UUID.randomUUID();
+        com.saanjha.modules.team.entity.Team team = new com.saanjha.modules.team.entity.Team();
+        team.setId(teamId);
+        when(teamService.getInvitationPolicyForProject(projectId))
+                .thenReturn(com.saanjha.modules.team.entity.TeamSettings.MemberInvitationPolicy.LEAD_ONLY);
+        when(teamRepository.findByProjectId(projectId)).thenReturn(Optional.of(team));
+
+        com.saanjha.modules.team.entity.Membership someoneElseIsLead = new com.saanjha.modules.team.entity.Membership();
+        someoneElseIsLead.setUserId(UUID.randomUUID());
+        when(membershipRepository.findByTeam_IdAndRoleAndStatus(
+                teamId, com.saanjha.modules.team.entity.MembershipRole.LEAD, MembershipStatus.ACTIVE))
+                .thenReturn(Optional.of(someoneElseIsLead));
+
+        assertThat(guard.canInviteToProject(projectId, memberUserId.toString())).isFalse();
+    }
+
+    @Test
+    void canInviteToProject_anyMemberPolicy_permitsAnOrdinaryLiveMember() {
+        UUID projectId = UUID.randomUUID();
+        com.saanjha.modules.team.entity.Team team = new com.saanjha.modules.team.entity.Team();
+        team.setId(teamId);
+        when(teamService.getInvitationPolicyForProject(projectId))
+                .thenReturn(com.saanjha.modules.team.entity.TeamSettings.MemberInvitationPolicy.ANY_MEMBER);
+        when(teamRepository.findByProjectId(projectId)).thenReturn(Optional.of(team));
+
+        com.saanjha.modules.team.entity.Membership membership = new com.saanjha.modules.team.entity.Membership();
+        membership.setUserId(memberUserId);
+        when(membershipRepository.findByTeam_IdAndUserIdAndStatusIn(eq(teamId), eq(memberUserId), any()))
+                .thenReturn(Optional.of(membership));
+
+        assertThat(guard.canInviteToProject(projectId, memberUserId.toString())).isTrue();
+    }
+
+    @Test
+    void canInviteToProject_anyMemberPolicy_stillDeniesAStranger() {
+        UUID projectId = UUID.randomUUID();
+        com.saanjha.modules.team.entity.Team team = new com.saanjha.modules.team.entity.Team();
+        team.setId(teamId);
+        when(teamService.getInvitationPolicyForProject(projectId))
+                .thenReturn(com.saanjha.modules.team.entity.TeamSettings.MemberInvitationPolicy.ANY_MEMBER);
+        when(teamRepository.findByProjectId(projectId)).thenReturn(Optional.of(team));
+        when(membershipRepository.findByTeam_IdAndUserIdAndStatusIn(eq(teamId), eq(strangerUserId), any()))
+                .thenReturn(Optional.empty());
+
+        assertThat(guard.canInviteToProject(projectId, strangerUserId.toString())).isFalse();
+    }
 }

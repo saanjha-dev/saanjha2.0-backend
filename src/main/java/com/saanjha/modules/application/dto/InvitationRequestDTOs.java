@@ -8,8 +8,8 @@ import java.util.UUID;
 public class InvitationRequestDTOs {
 
     public record SendInvitationRequest(
-            @NotNull(message = "Invited user id is required")
-            UUID invitedUserId,
+            @jakarta.validation.constraints.NotBlank(message = "User handle is required")
+            String userHandle,
 
             @Size(max = 100)
             String preferredRole,

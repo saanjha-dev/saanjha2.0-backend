@@ -76,9 +76,48 @@ public class UserProfileService {
         return triggerProfileUpdatePipeline(profile);
     }
 
+    @Transactional
+    public void incrementProjectsCompleted(UUID userId) {
+        UserProfile profile = getProfileEntity(userId);
+        profile.setProjectsCompleted(profile.getProjectsCompleted() + 1);
+        triggerProfileUpdatePipeline(profile);
+    }
+
     // ========================================================================
     // SKILLS MANAGEMENT
     // ========================================================================
+
+    @Transactional
+    public void verifyProjectSkills(UUID userId, java.util.Set<String> skills, String skillLevel, UUID verifierId, java.time.Instant verifiedAt) {
+        UserProfile profile = getProfileEntity(userId);
+        
+        for (String skillName : skills) {
+            String normalizedSkill = normalizeString(skillName);
+            UserSkill existingSkill = profile.getSkills().stream()
+                    .filter(s -> s.getSkillName().equalsIgnoreCase(normalizedSkill) && !s.isDeleted())
+                    .findFirst()
+                    .orElse(null);
+
+            if (existingSkill != null) {
+                if (!existingSkill.isVerified()) {
+                    existingSkill.setVerified(true);
+                    existingSkill.setVerifiedBy(verifierId);
+                    existingSkill.setVerifiedAt(verifiedAt);
+                    skillRepository.save(existingSkill);
+                }
+            } else {
+                UserSkill newSkill = new UserSkill();
+                newSkill.setSkillName(normalizedSkill);
+                newSkill.setSkillLevel(skillLevel.toUpperCase());
+                newSkill.setVerified(true);
+                newSkill.setVerifiedBy(verifierId);
+                newSkill.setVerifiedAt(verifiedAt);
+                profile.addSkill(newSkill);
+                skillRepository.save(newSkill);
+            }
+        }
+        triggerProfileUpdatePipeline(profile);
+    }
 
     @Transactional
     public int addSkill(UUID userId, AddSkillRequest request) {
@@ -280,22 +319,20 @@ public class UserProfileService {
     private int calculateAndCacheProfileScore(UserProfile profile) {
         int score = 0;
 
-        // 1. Basic Info (Max 25%)
-        if (profile.getProfileImageUrl() != null) score += 10;
+        // 1. Basic Info (Max 35%)
+        if (profile.getProfileImageUrl() != null) score += 15;
         if (profile.getHeadline() != null && !profile.getHeadline().isEmpty()) score += 5;
-        if (profile.getBio() != null && !profile.getBio().isEmpty()) score += 10;
+        if (profile.getBio() != null && !profile.getBio().isEmpty()) score += 15;
 
-        // 2. Experience & Location (Max 15%)
+        // 2. Experience & Location (Max 25%)
         if (profile.getLocation() != null) score += 5;
         if (profile.getExperienceLevel() != null) score += 10;
+        if (profile.getCollege() != null && !profile.getCollege().isEmpty()) score += 10;
 
         // 3. Relational Data (Max 40%)
         if (!profile.getSkills().isEmpty()) score += 20; // Has at least 1 skill
         if (!profile.getInterests().isEmpty()) score += 10;
         if (!profile.getSocialLinks().isEmpty()) score += 10;
-
-        // 4. Platform Activity (Max 20%)
-        if (profile.getProjectsCompleted() > 0) score += 20;
 
         // Cap at 100
         score = Math.min(score, 100);
@@ -418,7 +455,7 @@ public class UserProfileService {
                 .collect(Collectors.toList());
 
         return new UserProfileResponse(
-                profile.getId(), profile.getUniqueHandle(), profile.getDisplayName(), profile.getHeadline(), profile.getBio(),
+                profile.getUserId(), profile.getUniqueHandle(), profile.getDisplayName(), profile.getHeadline(), profile.getBio(),
                 profile.getLocation(), profile.getCollege(), profile.getExperienceLevel(),
                 profile.getProfileImageUrl(), score, profile.getProjectsCompleted(),
                 prefsResponse, skills, interests, links
@@ -442,7 +479,7 @@ public class UserProfileService {
                 .collect(Collectors.toList());
 
         return new PublicProfileResponse(
-                profile.getId(), profile.getUniqueHandle(), profile.getDisplayName(), profile.getHeadline(), profile.getBio(),
+                profile.getUserId(), profile.getUniqueHandle(), profile.getDisplayName(), profile.getHeadline(), profile.getBio(),
                 profile.getLocation(), profile.getCollege(), profile.getExperienceLevel(),
                 profile.getProfileImageUrl(), score, profile.getProjectsCompleted(),
                 skills, interests, links

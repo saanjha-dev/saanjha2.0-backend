@@ -5,6 +5,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -14,7 +16,7 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "prj_requirements", schema = "prj", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"project_id", "skill_name"})
+        @UniqueConstraint(columnNames = {"project_id", "role_name"})
 })
 @Getter
 @Setter
@@ -28,8 +30,13 @@ public class ProjectRequirement extends BaseAuditEntity {
     @JoinColumn(name = "project_id", nullable = false)
     private Project project;
 
+    @Column(name = "role_name", nullable = false, length = 100)
+    private String roleName;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "prj_requirement_skills", schema = "prj", joinColumns = @JoinColumn(name = "requirement_id"))
     @Column(name = "skill_name", nullable = false, length = 100)
-    private String skillName;
+    private Set<String> skills = new HashSet<>();
 
     @Column(name = "skill_level", nullable = false, length = 20)
     private String skillLevel; // BEGINNER, INTERMEDIATE, ADVANCED

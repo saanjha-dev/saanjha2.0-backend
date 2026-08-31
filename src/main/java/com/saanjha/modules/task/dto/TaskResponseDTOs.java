@@ -9,6 +9,7 @@ public class TaskResponseDTOs {
 
     public record TaskResponse(
             UUID id,
+            String taskKey,
             UUID projectId,
             String title,
             String description,
@@ -34,11 +35,14 @@ public class TaskResponseDTOs {
 
     public record TaskSummaryResponse(
             UUID id,
+            String taskKey,
             String title,
             String type,
             String priority,
             String status,
             UUID assigneeId,
+            Integer storyPoints,
+            String blockedReason,
             Instant dueDate,
             Instant createdAt
     ) {}
@@ -55,6 +59,8 @@ public class TaskResponseDTOs {
     public record DependencyResponse(
             UUID id,
             UUID relatedTaskId,
+            String relatedTaskKey,
+            String relatedTaskTitle,
             String type,
             Instant createdAt
     ) {}

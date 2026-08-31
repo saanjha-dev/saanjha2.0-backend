@@ -77,7 +77,7 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    @RateLimit(action = "refresh", baseLimit = 10)
+    @RateLimit(action = "refresh", baseLimit = 10, baseTimeSeconds = 60) // explicitly setting the time limits the Redis duration
     @Operation(summary = "Rotate Session Tokens", description = "Consumes refresh token to issue a new short-lived access token.")
     public ResponseEntity<ApiEnvelope<AuthTokens>> refresh(@Valid @RequestBody RefreshTokenRequest request, HttpServletRequest httpServletRequest) {
         AuthTokens tokens = tokenRotationService.rotate(request.refreshToken(), request.deviceId(), httpServletRequest.getRemoteAddr());
@@ -126,6 +126,75 @@ public class AuthController {
     public ResponseEntity<ApiEnvelope<String>> logoutAllDevices(@Valid @RequestBody LogoutAllDevicesRequest request) {
         authService.logoutAllDevices(getAuthenticatedUserId(), request.password());
         return ResponseEntity.ok(ApiEnvelope.success("All sessions terminated."));
+    }
+
+    @PostMapping("/change-password/request")
+    @SecurityRequirement(name = "bearerAuth")
+    @RateLimit(action = "change-password-request", baseLimit = 3, baseTimeSeconds = 60)
+    @Operation(summary = "Request Password Change", description = "Sends an OTP to the user's email to authorize a password change.")
+    public ResponseEntity<ApiEnvelope<String>> requestPasswordChange() {
+        authService.requestPasswordChange(getAuthenticatedUserId());
+        return ResponseEntity.ok(ApiEnvelope.success("Verification code sent to your email."));
+    }
+
+    @PostMapping("/change-password/verify")
+    @SecurityRequirement(name = "bearerAuth")
+    @RateLimit(action = "change-password-verify", baseLimit = 5)
+    @Operation(summary = "Verify Password Change OTP", description = "Validates the OTP and updates the password, logging out all devices.")
+    public ResponseEntity<ApiEnvelope<String>> verifyPasswordChange(@Valid @RequestBody ChangePasswordVerifyRequest request) {
+        authService.verifyPasswordChange(getAuthenticatedUserId(), request);
+        return ResponseEntity.ok(ApiEnvelope.success("Password changed successfully. You will be logged out everywhere."));
+    }
+
+    @PostMapping("/change-mfa/request")
+    @SecurityRequirement(name = "bearerAuth")
+    @RateLimit(action = "mfa-setup-request", baseLimit = 3, baseTimeSeconds = 60)
+    @Operation(summary = "Request MFA Setup", description = "Sends an OTP to the user's email to authorize MFA setup.")
+    public ResponseEntity<ApiEnvelope<String>> requestMfaSetup() {
+        authService.requestMfaSetup(getAuthenticatedUserId());
+        return ResponseEntity.ok(ApiEnvelope.success("Verification code sent to your email."));
+    }
+
+    @PostMapping("/change-mfa/verify")
+    @SecurityRequirement(name = "bearerAuth")
+    @RateLimit(action = "mfa-setup-verify", baseLimit = 5)
+    @Operation(summary = "Verify MFA Setup OTP", description = "Validates the OTP and returns the TOTP secret and QR code URI.")
+    public ResponseEntity<ApiEnvelope<ResponseDTOs.MfaSetupResponse>> verifyMfaSetup(@Valid @RequestBody VerifyOtpRequest request) {
+        return ResponseEntity.ok(ApiEnvelope.success(authService.verifyMfaSetup(getAuthenticatedUserId(), request.otpCode())));
+    }
+
+    @PostMapping("/change-mfa/enable")
+    @SecurityRequirement(name = "bearerAuth")
+    @RateLimit(action = "mfa-setup-enable", baseLimit = 5)
+    @Operation(summary = "Enable MFA", description = "Verifies the TOTP code and fully enables MFA for the account.")
+    public ResponseEntity<ApiEnvelope<String>> enableMfa(@Valid @RequestBody EnableMfaRequest request) {
+        authService.enableMfa(getAuthenticatedUserId(), request.totpCode());
+        return ResponseEntity.ok(ApiEnvelope.success("MFA has been successfully enabled."));
+    }
+
+    @GetMapping("/mfa/status")
+    @SecurityRequirement(name = "bearerAuth")
+    @RateLimit(action = "mfa-status", baseLimit = 10)
+    @Operation(summary = "Get MFA Status", description = "Returns whether MFA is enabled for the current account.")
+    public ResponseEntity<ApiEnvelope<ResponseDTOs.MfaStatusResponse>> getMfaStatus() {
+        return ResponseEntity.ok(ApiEnvelope.success(authService.getMfaStatus(getAuthenticatedUserId())));
+    }
+
+    @PostMapping("/change-mfa/disable")
+    @SecurityRequirement(name = "bearerAuth")
+    @RateLimit(action = "mfa-setup-disable", baseLimit = 5)
+    @Operation(summary = "Disable MFA", description = "Verifies password and disables MFA for the account.")
+    public ResponseEntity<ApiEnvelope<String>> disableMfa(@Valid @RequestBody DisableMfaRequest request) {
+        authService.disableMfa(getAuthenticatedUserId(), request.password());
+        return ResponseEntity.ok(ApiEnvelope.success("MFA has been successfully disabled."));
+    }
+
+    @PostMapping("/login/mfa")
+    @RateLimit(action = "login-mfa", baseLimit = 5, errorMessage = "Too many login attempts")
+    @Operation(summary = "Authenticate MFA", description = "Verifies TOTP and issues a cryptographic token family.")
+    public ResponseEntity<ApiEnvelope<AuthTokens>> verifyLoginMfa(@Valid @RequestBody VerifyLoginMfaRequest request, HttpServletRequest httpServletRequest) {
+        AuthTokens tokens = authService.verifyLoginMfa(request.mfaToken(), request.totpCode(), httpServletRequest.getRemoteAddr(), request.deviceId(), request.trustDevice());
+        return ResponseEntity.ok(ApiEnvelope.success(tokens));
     }
 
     // ========================================================================

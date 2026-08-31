@@ -30,7 +30,7 @@ public final class ProjectStatusTransitionValidator {
         ALLOWED_TRANSITIONS.put(ProjectStatus.DRAFT, EnumSet.of(ProjectStatus.RECRUITING, ProjectStatus.ARCHIVED));
         ALLOWED_TRANSITIONS.put(ProjectStatus.RECRUITING, EnumSet.of(ProjectStatus.IN_PROGRESS, ProjectStatus.ARCHIVED));
         ALLOWED_TRANSITIONS.put(ProjectStatus.IN_PROGRESS, EnumSet.of(ProjectStatus.COMPLETED, ProjectStatus.ARCHIVED));
-        ALLOWED_TRANSITIONS.put(ProjectStatus.COMPLETED, EnumSet.noneOf(ProjectStatus.class));
+        ALLOWED_TRANSITIONS.put(ProjectStatus.COMPLETED, EnumSet.of(ProjectStatus.ARCHIVED));
         ALLOWED_TRANSITIONS.put(ProjectStatus.ARCHIVED, EnumSet.noneOf(ProjectStatus.class));
     }
 

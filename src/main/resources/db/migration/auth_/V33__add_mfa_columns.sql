@@ -1,0 +1,3 @@
+ALTER TABLE auth.auth_users
+ADD COLUMN mfa_secret VARCHAR(255),
+ADD COLUMN is_mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE;

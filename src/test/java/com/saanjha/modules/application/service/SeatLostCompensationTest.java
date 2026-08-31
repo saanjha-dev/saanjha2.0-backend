@@ -38,6 +38,7 @@ class SeatLostCompensationTest {
 
     @Mock private InvitationRepository invitationRepository;
     @Mock private ApplicationEventPublisher invitationEventPublisher;
+    @Mock private com.saanjha.modules.user.repository.UserProfileRepository userProfileRepository;
 
     private ApplicationService applicationService;
     private InvitationService invitationService;
@@ -45,7 +46,7 @@ class SeatLostCompensationTest {
     @BeforeEach
     void setUp() {
         applicationService = new ApplicationService(applicationRepository, noteRepository, statusLogRepository, projectService, applicationEventPublisher);
-        invitationService = new InvitationService(invitationRepository, projectService, invitationEventPublisher);
+        invitationService = new InvitationService(invitationRepository, projectService, invitationEventPublisher, userProfileRepository);
         lenient().when(applicationRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(invitationRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }

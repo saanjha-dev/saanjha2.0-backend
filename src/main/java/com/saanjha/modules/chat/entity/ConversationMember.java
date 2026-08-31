@@ -61,6 +61,9 @@ public class ConversationMember extends BaseAuditEntity {
     @Column(name = "joined_at", nullable = false)
     private Instant joinedAt = Instant.now();
 
+    @Column(name = "cleared_at")
+    private Instant clearedAt;
+
     @Column(name = "left_at")
     private Instant leftAt;
 

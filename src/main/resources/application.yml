@@ -6,6 +6,19 @@ spring:
   application:
     name: saanjha-backend
 
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:placeholder-google-client-id}
+            client-secret: ${GOOGLE_CLIENT_SECRET:placeholder-google-client-secret}
+            scope: profile, email
+          github:
+            client-id: ${GITHUB_CLIENT_ID:placeholder-github-client-id}
+            client-secret: ${GITHUB_CLIENT_SECRET:placeholder-github-client-secret}
+            scope: user:email, read:user
+
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
@@ -43,7 +56,7 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
-    locations: classpath:db/migration/auth_,classpath:db/migration/usr_,classpath:db/migration/prj_,classpath:db/migration/app_,classpath:db/migration/tem_,classpath:db/migration/tsk_,classpath:db/migration/con_,classpath:db/migration/ptf_,classpath:db/migration/ntf_,classpath:db/migration/dsc_,classpath:db/migration/cht_,classpath:db/migration/adm_
+    locations: classpath:db/migration/auth_,classpath:db/migration/usr_,classpath:db/migration/prj_,classpath:db/migration/app_,classpath:db/migration/tem_,classpath:db/migration/tsk_,classpath:db/migration/con_,classpath:db/migration/ptf_,classpath:db/migration/ntf_,classpath:db/migration/dsc_,classpath:db/migration/cht_,classpath:db/migration/adm_,classpath:db/migration/fdb_
     # FIX (TD7/S5): clean-on-validation-error and out-of-order are no longer
     # set here. Both default to Flyway's own safe defaults (false) unless a
     # profile explicitly opts in — see application-dev.yml. Neither should

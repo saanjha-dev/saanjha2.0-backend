@@ -3,6 +3,7 @@ package com.saanjha.modules.auth.service;
 import com.saanjha.modules.auth.dto.ResponseDTOs;
 import com.saanjha.modules.auth.entity.AuthRole;
 import com.saanjha.modules.auth.entity.AuthSession;
+import com.saanjha.modules.auth.entity.AuthTrustedDevice;
 import com.saanjha.modules.auth.entity.AuthUser;
 import com.saanjha.modules.auth.dto.RequestDTOs.*;
 import com.saanjha.modules.auth.dto.ResponseDTOs.AuthTokens;
@@ -10,6 +11,7 @@ import com.saanjha.modules.auth.event.AuthEvents.*;
 import com.saanjha.modules.auth.repository.AuthRoleRepository;
 import com.saanjha.modules.auth.repository.AuthSessionRepository;
 import com.saanjha.modules.auth.repository.AuthUserRepository;
+import com.saanjha.modules.auth.repository.AuthTrustedDeviceRepository;
 import com.saanjha.modules.auth.repository.RefreshTokenRepository;
 import com.saanjha.shared.exception.AppException;
 import com.saanjha.shared.exception.ErrorCode;
@@ -23,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -43,6 +46,7 @@ public class AuthService {
     private final EventPublisherService eventPublisher;
     private final PermissionCacheService permissionCacheService; // For eviction
     private final JwtProvider jwtProvider;
+    private final AuthTrustedDeviceRepository authTrustedDeviceRepository;
 
     @Transactional
     public void register(RegisterRequest req) {
@@ -66,6 +70,7 @@ public class AuthService {
         generateAndDispatchOtp(user.getEmail(), "EMAIL_VERIFICATION");
     }
 
+    @Transactional
     public void resendVerification(String email) {
         AuthUser user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "Invalid request."));
@@ -132,6 +137,27 @@ public class AuthService {
             }
         }
 
+        if (user.isMfaEnabled()) {
+            Optional<AuthTrustedDevice> trustedDeviceOpt = authTrustedDeviceRepository.findByUserIdAndDeviceId(user.getId(), req.deviceId());
+            if (trustedDeviceOpt.isPresent()) {
+                AuthTrustedDevice trustedDevice = trustedDeviceOpt.get();
+                if (trustedDevice.getExpiresAt().isAfter(Instant.now())) {
+                    AuthSession session = new AuthSession();
+                    session.setUserId(user.getId());
+                    session.setDeviceId(req.deviceId());
+                    session.setDeviceIp(clientIp);
+                    session.setLastActivityAt(Instant.now());
+                    sessionRepository.save(session);
+                    return tokenRotationService.createTokenFamily(session, user);
+                } else {
+                    authTrustedDeviceRepository.delete(trustedDevice);
+                }
+            }
+
+            String mfaToken = jwtProvider.generatePasswordResetToken(user.getId(), user.getEmail()); // Reuse short lived token logic
+            return AuthTokens.requireMfa(mfaToken);
+        }
+
         AuthSession session = new AuthSession();
         session.setUserId(user.getId());
         session.setDeviceId(req.deviceId());
@@ -142,6 +168,57 @@ public class AuthService {
         return tokenRotationService.createTokenFamily(session, user);
     }
 
+    @Transactional
+    public AuthTokens oauthLogin(String email, String authProvider, String providerId, String clientIp) {
+        // Find existing user by email or by providerId
+        Optional<AuthUser> maybeUser = userRepository.findByEmail(email);
+
+        AuthUser user;
+        if (maybeUser.isPresent()) {
+            user = maybeUser.get();
+            // If the user already exists (maybe via local signup), we can link the OAuth provider.
+            if ("LOCAL".equals(user.getAuthProvider())) {
+                user.setAuthProvider(authProvider);
+                user.setProviderId(providerId);
+                userRepository.save(user);
+            }
+        } else {
+            // Register new user via OAuth
+            user = new AuthUser();
+            user.setEmail(email);
+            user.setEmailVerified(true); // OAuth emails are verified by the provider
+            user.setAuthProvider(authProvider);
+            user.setProviderId(providerId);
+            
+            // Assign default role (e.g. ROLE_USER)
+            AuthRole memberRole = roleRepository.findByName("ROLE_USER")
+                    .orElseThrow(() -> new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Default role missing"));
+            user.getRoles().add(memberRole);
+            
+            user = userRepository.save(user);
+            eventPublisher.publish(new UserRegisteredEvent(user.getId(), user.getEmail(), Instant.now().toEpochMilli()));
+        }
+
+        if (user.getStatus() != AuthUser.AccountStatus.ACTIVE) {
+            switch (user.getStatus()) {
+                case LOCKED -> throw new AppException(ErrorCode.ACCOUNT_LOCKED, "This account has been locked due to suspicious activity.");
+                case BANNED -> throw new AppException(ErrorCode.ACCOUNT_SUSPENDED, "This account has been permanently banned.");
+                default -> throw new AppException(ErrorCode.ACCOUNT_SUSPENDED, "This account has been suspended by an administrator.");
+            }
+        }
+
+        // Create Session
+        AuthSession session = new AuthSession();
+        session.setUserId(user.getId());
+        session.setDeviceId("OAUTH2_DEVICE"); // Using a generic identifier since we don't have client fingerprint in the callback
+        session.setDeviceIp(clientIp);
+        session.setLastActivityAt(Instant.now());
+        sessionRepository.save(session);
+
+        return tokenRotationService.createTokenFamily(session, user);
+    }
+
+    @Transactional
     public void requestPasswordReset(String email) {
         userRepository.findByEmail(email).ifPresent(user -> {
             if (user.getStatus() == AuthUser.AccountStatus.ACTIVE) {
@@ -189,6 +266,8 @@ public class AuthService {
         tokenRepository.revokeAllTokensForUser(
                 userId
         );
+
+        authTrustedDeviceRepository.deleteByUserId(userId);
     }
 
     @Transactional
@@ -255,6 +334,154 @@ public class AuthService {
         }
 
         logoutAllDevicesInternal(userId);
+    }
+
+    @Transactional
+    public void requestPasswordChange(UUID userId) {
+        AuthUser user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "User not found."));
+        
+        if (user.getStatus() == AuthUser.AccountStatus.ACTIVE) {
+            generateAndDispatchOtp(user.getEmail(), "PASSWORD_CHANGE");
+        }
+    }
+
+    @Transactional
+    public void verifyPasswordChange(UUID userId, ChangePasswordVerifyRequest request) {
+        AuthUser user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "User not found."));
+
+        validateAndConsumeOtp(user.getEmail(), request.otpCode(), "PASSWORD_CHANGE");
+
+        userRepository.updatePassword(userId, passwordEncoder.encode(request.newPassword()));
+
+        logoutAllDevicesInternal(userId);
+        permissionCacheService.evictUserCache(userId);
+    }
+
+    @Transactional
+    public void requestMfaSetup(UUID userId) {
+        AuthUser user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "User not found."));
+        if (user.getStatus() == AuthUser.AccountStatus.ACTIVE) {
+            generateAndDispatchOtp(user.getEmail(), "MFA_SETUP");
+        }
+    }
+
+    @Transactional
+    public ResponseDTOs.MfaSetupResponse verifyMfaSetup(UUID userId, String emailOtp) {
+        AuthUser user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "User not found."));
+
+        validateAndConsumeOtp(user.getEmail(), emailOtp, "MFA_SETUP");
+
+        dev.samstevens.totp.secret.SecretGenerator secretGenerator = new dev.samstevens.totp.secret.DefaultSecretGenerator();
+        String secret = secretGenerator.generate();
+
+        user.setMfaSecret(secret);
+        user.setMfaEnabled(false);
+        userRepository.save(user);
+
+        dev.samstevens.totp.qr.QrData data = new dev.samstevens.totp.qr.QrData.Builder()
+                .label(user.getEmail())
+                .secret(secret)
+                .issuer("Saanjha")
+                .algorithm(dev.samstevens.totp.code.HashingAlgorithm.SHA1)
+                .digits(6)
+                .period(30)
+                .build();
+
+        dev.samstevens.totp.qr.QrGenerator generator = new dev.samstevens.totp.qr.ZxingPngQrGenerator();
+        byte[] imageData;
+        try {
+            imageData = generator.generate(data);
+        } catch (Exception e) {
+            throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Failed to generate QR code.");
+        }
+        String mimeType = generator.getImageMimeType();
+        String dataUri = dev.samstevens.totp.util.Utils.getDataUriForImage(imageData, mimeType);
+
+        return new ResponseDTOs.MfaSetupResponse(secret, dataUri);
+    }
+
+    @Transactional
+    public void enableMfa(UUID userId, String totpCode) {
+        AuthUser user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "User not found."));
+
+        if (user.getMfaSecret() == null) {
+            throw new AppException(ErrorCode.BAD_REQUEST, "MFA setup not initialized.");
+        }
+
+        dev.samstevens.totp.time.TimeProvider timeProvider = new dev.samstevens.totp.time.SystemTimeProvider();
+        dev.samstevens.totp.code.CodeGenerator codeGenerator = new dev.samstevens.totp.code.DefaultCodeGenerator();
+        dev.samstevens.totp.code.CodeVerifier verifier = new dev.samstevens.totp.code.DefaultCodeVerifier(codeGenerator, timeProvider);
+
+        if (!verifier.isValidCode(user.getMfaSecret(), totpCode)) {
+            throw new AppException(ErrorCode.UNAUTHORIZED, "Invalid TOTP code.");
+        }
+
+        user.setMfaEnabled(true);
+        userRepository.save(user);
+    }
+
+    @Transactional(readOnly = true)
+    public ResponseDTOs.MfaStatusResponse getMfaStatus(UUID userId) {
+        AuthUser user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "User not found."));
+        return new ResponseDTOs.MfaStatusResponse(user.isMfaEnabled());
+    }
+
+    @Transactional
+    public void disableMfa(UUID userId, String password) {
+        AuthUser user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "User not found."));
+
+        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+            throw new AppException(ErrorCode.UNAUTHORIZED, "Password verification failed.");
+        }
+
+        user.setMfaEnabled(false);
+        user.setMfaSecret(null);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public AuthTokens verifyLoginMfa(String mfaToken, String totpCode, String clientIp, String deviceId, Boolean trustDevice) {
+        UUID userId = jwtProvider.validatePasswordResetToken(mfaToken); // Reusing logic
+
+        AuthUser user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "Invalid MFA token."));
+
+        if (!user.isMfaEnabled() || user.getMfaSecret() == null) {
+            throw new AppException(ErrorCode.BAD_REQUEST, "MFA is not enabled for this account.");
+        }
+
+        dev.samstevens.totp.time.TimeProvider timeProvider = new dev.samstevens.totp.time.SystemTimeProvider();
+        dev.samstevens.totp.code.CodeGenerator codeGenerator = new dev.samstevens.totp.code.DefaultCodeGenerator();
+        dev.samstevens.totp.code.CodeVerifier verifier = new dev.samstevens.totp.code.DefaultCodeVerifier(codeGenerator, timeProvider);
+
+        if (!verifier.isValidCode(user.getMfaSecret(), totpCode)) {
+            throw new AppException(ErrorCode.UNAUTHORIZED, "Invalid TOTP code.");
+        }
+
+        AuthSession session = new AuthSession();
+        session.setUserId(user.getId());
+        session.setDeviceId(deviceId); 
+        session.setDeviceIp(clientIp);
+        session.setLastActivityAt(Instant.now());
+        sessionRepository.save(session);
+
+        if (Boolean.TRUE.equals(trustDevice)) {
+            Optional<AuthTrustedDevice> existingDevice = authTrustedDeviceRepository.findByUserIdAndDeviceId(user.getId(), deviceId);
+            AuthTrustedDevice trustedDevice = existingDevice.orElseGet(AuthTrustedDevice::new);
+            trustedDevice.setUser(user);
+            trustedDevice.setDeviceId(deviceId);
+            trustedDevice.setExpiresAt(Instant.now().plus(30, ChronoUnit.DAYS));
+            authTrustedDeviceRepository.save(trustedDevice);
+        }
+
+        return tokenRotationService.createTokenFamily(session, user);
     }
 
     // ========================================================================

@@ -42,6 +42,9 @@ public final class PortfolioEvents {
     /** Producer: Portfolio's badge engine. Consumers: Notification (future — "you earned a badge"). */
     public record BadgeAwardedEvent(UUID userId, String badgeType, Instant awardedAt) {}
 
+    /** Fired when portfolio generation verifies skills required for a project role. */
+    public record SkillsVerifiedEvent(UUID userId, UUID projectId, UUID verifierId, java.util.Set<String> skills, String skillLevel, Instant verifiedAt) {}
+
     /** Consumers: none yet in this codebase; reserved for a future Discovery/recruiter-facing cache. */
     public record PortfolioVisibilityChangedEvent(UUID userId, String visibility, Instant changedAt) {}
 

@@ -10,17 +10,30 @@ public final class ResponseDTOs {
             String accessToken,
             String refreshToken,
             String tokenType,
-            long expiresIn
+            Long expiresIn,
+            Boolean mfaRequired,
+            String mfaToken
     ) {
         public AuthTokens(String accessToken, String refreshToken, long expiresIn) {
-            this(accessToken, refreshToken, "Bearer", expiresIn);
+            this(accessToken, refreshToken, "Bearer", expiresIn, false, null);
         }
-
-
+        
+        public static AuthTokens requireMfa(String mfaToken) {
+            return new AuthTokens(null, null, null, null, true, mfaToken);
+        }
     }
 
     public record PasswordResetTokenResponse(
             String resetToken,
             long expiresIn
+    ) {}
+
+    public record MfaSetupResponse(
+            String secret,
+            String qrDataUri
+    ) {}
+
+    public record MfaStatusResponse(
+            boolean mfaEnabled
     ) {}
 }

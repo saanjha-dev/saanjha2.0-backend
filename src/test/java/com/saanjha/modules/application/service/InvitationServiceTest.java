@@ -7,6 +7,8 @@ import com.saanjha.modules.application.entity.InvitationStatus;
 import com.saanjha.modules.application.repository.InvitationRepository;
 import com.saanjha.modules.project.dto.ProjectResponseDTOs.ProjectSnapshot;
 import com.saanjha.modules.project.service.ProjectService;
+import com.saanjha.modules.user.entity.UserProfile;
+import com.saanjha.modules.user.repository.UserProfileRepository;
 import com.saanjha.shared.exception.AppException;
 import com.saanjha.shared.exception.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +34,7 @@ class InvitationServiceTest {
     @Mock private InvitationRepository invitationRepository;
     @Mock private ProjectService projectService;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private UserProfileRepository userProfileRepository;
 
     private InvitationService invitationService;
 
@@ -41,7 +44,7 @@ class InvitationServiceTest {
 
     @BeforeEach
     void setUp() {
-        invitationService = new InvitationService(invitationRepository, projectService, eventPublisher);
+        invitationService = new InvitationService(invitationRepository, projectService, eventPublisher, userProfileRepository);
         projectId = UUID.randomUUID();
         leadUserId = UUID.randomUUID();
         inviteeId = UUID.randomUUID();
@@ -51,10 +54,13 @@ class InvitationServiceTest {
     @Test
     void send_happyPath_succeeds() {
         when(projectService.getSnapshot(projectId)).thenReturn(recruitingSnapshot());
+        UserProfile mockProfile = new UserProfile();
+        mockProfile.setUserId(inviteeId);
+        when(userProfileRepository.findByUniqueHandleIgnoreCase("frontend_dev")).thenReturn(Optional.of(mockProfile));
         when(invitationRepository.existsByProjectIdAndInvitedUserIdAndStatus(any(), any(), any())).thenReturn(false);
 
         InvitationResponse response = invitationService.sendInvitation(
-                projectId, leadUserId, new SendInvitationRequest(inviteeId, "Frontend", "Join us!"));
+                projectId, leadUserId, new SendInvitationRequest("frontend_dev", "Frontend", "Join us!"));
 
         assertThat(response.status()).isEqualTo("SENT");
         verify(eventPublisher).publishEvent(any());
@@ -63,9 +69,12 @@ class InvitationServiceTest {
     @Test
     void send_toSelf_isRejected() {
         when(projectService.getSnapshot(projectId)).thenReturn(recruitingSnapshot());
+        UserProfile mockProfile = new UserProfile();
+        mockProfile.setUserId(leadUserId);
+        when(userProfileRepository.findByUniqueHandleIgnoreCase("lead_dev")).thenReturn(Optional.of(mockProfile));
 
         assertThatThrownBy(() -> invitationService.sendInvitation(
-                projectId, leadUserId, new SendInvitationRequest(leadUserId, null, null)))
+                projectId, leadUserId, new SendInvitationRequest("lead_dev", null, null)))
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
     }
@@ -76,7 +85,7 @@ class InvitationServiceTest {
         when(projectService.getSnapshot(projectId)).thenReturn(archived);
 
         assertThatThrownBy(() -> invitationService.sendInvitation(
-                projectId, leadUserId, new SendInvitationRequest(inviteeId, null, null)))
+                projectId, leadUserId, new SendInvitationRequest("frontend_dev", null, null)))
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode()).isEqualTo(ErrorCode.PROJECT_READ_ONLY));
     }
@@ -84,10 +93,13 @@ class InvitationServiceTest {
     @Test
     void send_duplicatePendingInvitation_isRejected() {
         when(projectService.getSnapshot(projectId)).thenReturn(recruitingSnapshot());
+        UserProfile mockProfile = new UserProfile();
+        mockProfile.setUserId(inviteeId);
+        when(userProfileRepository.findByUniqueHandleIgnoreCase("frontend_dev")).thenReturn(Optional.of(mockProfile));
         when(invitationRepository.existsByProjectIdAndInvitedUserIdAndStatus(any(), any(), any())).thenReturn(true);
 
         assertThatThrownBy(() -> invitationService.sendInvitation(
-                projectId, leadUserId, new SendInvitationRequest(inviteeId, null, null)))
+                projectId, leadUserId, new SendInvitationRequest("frontend_dev", null, null)))
                 .isInstanceOf(AppException.class)
                 .satisfies(ex -> assertThat(((AppException) ex).getErrorCode()).isEqualTo(ErrorCode.CONFLICT));
     }

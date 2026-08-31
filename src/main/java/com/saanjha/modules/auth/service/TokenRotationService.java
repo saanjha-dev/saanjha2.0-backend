@@ -94,7 +94,13 @@ public class TokenRotationService {
             throw new AppException(ErrorCode.UNAUTHORIZED, "Refresh token has expired. Please log in again.");
         }
         if (!session.getDeviceId().equals(deviceId)) {
-            throw new AppException(ErrorCode.UNAUTHORIZED, "Device fingerprint mismatch.");
+            if ("OAUTH2_DEVICE".equals(session.getDeviceId())) {
+                // First refresh after OAuth login: bind the session to the actual device ID
+                session.setDeviceId(deviceId);
+                sessionRepository.save(session);
+            } else {
+                throw new AppException(ErrorCode.UNAUTHORIZED, "Device fingerprint mismatch.");
+            }
         }
 
         oldToken.setUsed(true);

@@ -18,11 +18,23 @@ public class AuthUser extends BaseAuditEntity {
     @Column(unique = true, nullable = false, updatable = false)
     private String email;
 
-    @Column(name = "password_hash", nullable = false)
+    @Column(name = "password_hash")
     private String passwordHash;
+
+    @Column(name = "auth_provider", nullable = false)
+    private String authProvider = "LOCAL";
+
+    @Column(name = "provider_id")
+    private String providerId;
 
     @Column(name = "is_email_verified", nullable = false)
     private boolean emailVerified = false;
+
+    @Column(name = "mfa_secret")
+    private String mfaSecret;
+
+    @Column(name = "is_mfa_enabled", nullable = false)
+    private boolean mfaEnabled = false;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "account_status", nullable = false)

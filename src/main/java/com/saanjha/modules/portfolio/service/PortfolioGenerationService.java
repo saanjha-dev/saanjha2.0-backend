@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -58,7 +59,7 @@ public class PortfolioGenerationService {
     // CONTRIBUTION ACCUMULATION (runs continuously, well before completion)
     // ========================================================================
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void accumulateContribution(UUID projectId, UUID userId, double finalScore, String contributionType) {
         if (projectId == null || userId == null) {
             return; // Platform-wide / non-project-scoped contributions don't feed a project showcase.
@@ -80,7 +81,7 @@ public class PortfolioGenerationService {
     // TEAM-SIDE SIGNAL
     // ========================================================================
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void applyTeamRoster(UUID projectId, List<RosterMember> roster) {
         Optional<ProjectCompletionSignal> completionSignal = completionSignalRepository.findByProjectId(projectId);
 
@@ -101,7 +102,7 @@ public class PortfolioGenerationService {
     // PROJECT-SIDE GATE
     // ========================================================================
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void applyProjectCompletion(UUID projectId, UUID leadUserId, Instant completedAt) {
         if (completionSignalRepository.findByProjectId(projectId).isEmpty()) {
             completionSignalRepository.save(ProjectCompletionSignal.create(projectId, completedAt, leadUserId));
@@ -120,7 +121,7 @@ public class PortfolioGenerationService {
     // REPUTATION / CORRECTIONS (global rollup only — see class Javadoc on corrections)
     // ========================================================================
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void applyReputationUpdate(UUID userId, Double reliabilityScore, Double leadershipScore,
                                        Double consistencyScore, Double reviewQualityScore) {
         PortfolioSummary summary = summaryRepository.findById(userId).orElseGet(() -> PortfolioSummary.blank(userId));
@@ -139,7 +140,7 @@ public class PortfolioGenerationService {
      * already-generated, project-scoped {@code PortfolioEntry} stays frozen
      * exactly as it was. See the module write-up's Known Tradeoffs.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void applyContributionCorrection(UUID userId, double scoreDelta) {
         PortfolioSummary summary = summaryRepository.findById(userId).orElse(null);
         if (summary == null) {
@@ -151,7 +152,7 @@ public class PortfolioGenerationService {
     }
 
     /** Project was abandoned, not completed — per the module's core principle, abandoned work never becomes verified history. */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void discardPending(UUID projectId) {
         List<PortfolioGenerationState> pending = stateRepository.findByProjectId(projectId);
         pending.stream().filter(s -> !s.isGenerated()).forEach(stateRepository::delete);
@@ -212,13 +213,22 @@ public class PortfolioGenerationService {
 
         eventPublisher.publishEvent(new PortfolioEntryCreatedEvent(entry.getId(), userId, projectId, entry.getContributionScore(), wasLead, entry.getGeneratedAt()));
         eventPublisher.publishEvent(new PortfolioGeneratedEvent(userId, projectId, entry.getGeneratedAt()));
+
+        Optional<ProjectSnapshotProvider.RequirementSnapshot> matchedReq = snapshot.get().requirements().stream()
+                .filter(r -> r.roleName().equalsIgnoreCase(state.getContributionTitle()))
+                .findFirst();
+        if (matchedReq.isPresent() && !matchedReq.get().skills().isEmpty()) {
+            eventPublisher.publishEvent(new com.saanjha.modules.portfolio.event.PortfolioEvents.SkillsVerifiedEvent(
+                    userId, projectId, signal.getLeadUserId(), matchedReq.get().skills(), matchedReq.get().skillLevel(), entry.getGeneratedAt()
+            ));
+        }
     }
 
     private long countTaggedCompletions(UUID userId, boolean backend) {
         return entryRepository.findByUserIdOrderByCompletedAtDesc(userId).stream()
                 .filter(e -> {
                     List<String> tags = readTechnologies(e.getTechnologiesJson());
-                    ProjectSnapshot pseudoSnapshot = new ProjectSnapshot(e.getProjectId(), e.getProjectTitle(), e.getProjectSlug(), e.getProjectCategory(), e.getProjectDescriptionExcerpt(), tags);
+                    ProjectSnapshot pseudoSnapshot = new ProjectSnapshot(e.getProjectId(), e.getProjectTitle(), e.getProjectSlug(), e.getProjectCategory(), e.getProjectDescriptionExcerpt(), tags, List.of());
                     return backend ? badgeEngine.projectHasBackendTags(pseudoSnapshot) : badgeEngine.projectHasFrontendTags(pseudoSnapshot);
                 })
                 .count();

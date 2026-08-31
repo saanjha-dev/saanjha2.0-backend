@@ -40,6 +40,22 @@ public class ChatResponseDTOs {
 
     public record ReactionSummaryResponse(String emoji, long count, boolean reactedByMe) {}
 
+    /**
+     * FIX (P0-4, Chat Reaction Persistence): what {@code
+     * ChatWebSocketController} broadcasts to {@code /topic/conversations/
+     * {id}/reactions} after a reaction is actually persisted via {@code
+     * ReactionService} — the full current per-emoji summary for the
+     * message, not just the raw client payload, so every subscriber's view
+     * converges on the same DB-backed state the message-history endpoint
+     * would return on reload. {@code reactedByMe} in the nested summaries
+     * is computed without a specific viewer (always {@code false}) since a
+     * single broadcast fans out to every subscriber, not one viewer.
+     */
+    public record ReactionEventResponse(
+            UUID conversationId, UUID messageId, UUID actorUserId, String emoji, String action,
+            List<ReactionSummaryResponse> reactions, Instant occurredAt
+    ) {}
+
     public record AttachmentResponse(
             UUID id, String filename, String mimeType, long sizeBytes,
             String storageProvider, String storageReference

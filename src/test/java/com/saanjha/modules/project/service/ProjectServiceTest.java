@@ -237,9 +237,9 @@ class ProjectServiceTest {
     void addRequirement_duplicateSkill_throwsConflict() {
         Project draft = draftProject();
         when(projectRepository.findById(draft.getId())).thenReturn(Optional.of(draft));
-        when(requirementRepository.existsByProject_IdAndSkillNameIgnoreCase(draft.getId(), "Java")).thenReturn(true);
+        when(requirementRepository.existsByProject_IdAndRoleNameIgnoreCase(draft.getId(), "Java")).thenReturn(true);
 
-        AddRequirementRequest request = new AddRequirementRequest("Java", "INTERMEDIATE", 2);
+        AddRequirementRequest request = new AddRequirementRequest("Java", java.util.List.of(), "INTERMEDIATE", 2);
 
         assertThatThrownBy(() -> projectService.addRequirement(draft.getId(), request))
                 .isInstanceOf(AppException.class)
@@ -266,10 +266,10 @@ class ProjectServiceTest {
         return project;
     }
 
-    private ProjectRequirement requirement(String skillName) {
+    private ProjectRequirement requirement(String roleName) {
         ProjectRequirement requirement = new ProjectRequirement();
         requirement.setId(UUID.randomUUID());
-        requirement.setSkillName(skillName);
+        requirement.setRoleName(roleName);
         requirement.setSkillLevel("INTERMEDIATE");
         requirement.setSlotsAvailable(1);
         return requirement;

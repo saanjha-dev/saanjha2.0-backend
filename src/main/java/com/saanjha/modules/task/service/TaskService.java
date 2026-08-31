@@ -51,25 +51,37 @@ public class TaskService {
     private final TaskAttachmentRepository attachmentRepository;
     private final TaskHistoryRepository historyRepository;
     private final TaskActivityRepository activityRepository;
+    private final ProjectTaskSequenceRepository sequenceRepository;
     private final ProjectService projectService;
     private final TeamService teamService;
     private final TeamSecurityGuard teamSecurityGuard;
     private final ApplicationEventPublisher eventPublisher;
 
-    // ========================================================================
-    // CREATION
-    // ========================================================================
+    private String generatePrefix(String title) {
+        if (title == null) return "PRJ";
+        String cleaned = title.replaceAll("[^a-zA-Z0-9]", "").toUpperCase();
+        if (cleaned.length() >= 3) {
+            return cleaned.substring(0, 3);
+        } else if (!cleaned.isEmpty()) {
+            return cleaned + "X".repeat(3 - cleaned.length());
+        }
+        return "PRJ";
+    }
 
-    /**
-     * Tasks may be created as early as RECRUITING (backlog planning ahead of
-     * the team locking in — Team already exists once a project publishes,
-     * see Team's own self-seeding on ProjectPublishedEvent) through
-     * IN_PROGRESS. Only COMPLETED/ARCHIVED projects and ARCHIVED/DISSOLVED/
-     * LOCKED teams block creation — see {@code assertProjectAcceptingWork}/
-     * {@code assertTeamActive}. A DRAFT project has no Team row yet at all,
-     * so {@code assertTeamActive} fails closed (NOT_FOUND) for it without
-     * needing a separate DRAFT-specific check.
-     */
+    private String getNextTaskKey(UUID projectId) {
+        ProjectTaskSequence seq = sequenceRepository.findByProjectIdForUpdate(projectId).orElseGet(() -> {
+            ProjectTaskSequence newSeq = new ProjectTaskSequence();
+            newSeq.setProjectId(projectId);
+            newSeq.setTaskPrefix(generatePrefix(projectService.getProjectTitle(projectId)));
+            newSeq.setCurrentSequence(0);
+            return sequenceRepository.save(newSeq);
+        });
+        
+        seq.setCurrentSequence(seq.getCurrentSequence() + 1);
+        sequenceRepository.save(seq);
+        return seq.getTaskPrefix() + "-" + seq.getCurrentSequence();
+    }
+
     @Transactional
     public TaskResponse createTask(UUID projectId, UUID reporterId, CreateTaskRequest request) {
         assertProjectAcceptingWork(projectId);
@@ -77,6 +89,7 @@ public class TaskService {
 
         Task task = new Task();
         task.setProjectId(projectId);
+        task.setTaskKey(getNextTaskKey(projectId));
         task.setTitle(request.title().trim());
         task.setDescription(request.description() != null ? HtmlSanitizer.sanitize(request.description()) : null);
         task.setType(TaskType.valueOf(request.type()));
@@ -123,12 +136,17 @@ public class TaskService {
     }
 
     @Transactional(readOnly = true)
-    public BoardResponse getBoard(UUID projectId) {
+    public BoardResponse getBoard(UUID projectId, TaskSearchCriteria criteria) {
         Map<String, List<TaskSummaryResponse>> columns = new LinkedHashMap<>();
         for (TaskStatus status : List.of(TaskStatus.BACKLOG, TaskStatus.TODO, TaskStatus.IN_PROGRESS,
                 TaskStatus.BLOCKED, TaskStatus.IN_REVIEW, TaskStatus.DONE)) {
-            Page<Task> page = taskRepository.findByProjectIdAndStatus(projectId, status,
-                    org.springframework.data.domain.PageRequest.of(0, 200));
+            
+            TaskSearchCriteria columnCriteria = new TaskSearchCriteria(
+                    status.name(), criteria.priority(), criteria.assigneeId(), null,
+                    criteria.createdBy(), criteria.createdAfter(), criteria.createdBefore(), criteria.keyword());
+            
+            Specification<Task> spec = buildSearchSpecification(projectId, columnCriteria);
+            Page<Task> page = taskRepository.findAll(spec, org.springframework.data.domain.PageRequest.of(0, 200));
             columns.put(status.name(), page.getContent().stream().map(this::mapToSummary).toList());
         }
         return new BoardResponse(projectId, columns);
@@ -186,6 +204,7 @@ public class TaskService {
         Task task = getTaskOrThrow(taskId);
         assertProjectAcceptingWork(task.getProjectId());
         assertMutable(task);
+        assertCanEdit(task, actingUserId);
 
         if (request.title() != null && !request.title().isBlank()) {
             task.setTitle(request.title().trim());
@@ -278,6 +297,8 @@ public class TaskService {
         TaskStatus from = task.getStatus();
         TaskStatus to = TaskStatus.valueOf(request.targetStatus());
         TaskStatusTransitionValidator.assertLegal(from, to);
+
+        assertCanTransition(task, to, actingUserId);
 
         runPreTransitionGuards(task, to);
         applyTransitionSideEffects(task, from, to, actingUserId, request.reason());
@@ -387,6 +408,22 @@ public class TaskService {
     // CHECKLIST
     // ========================================================================
 
+    /**
+     * FIX (P0-3, Checklist Read API): items could be added, completed,
+     * reordered, and removed, but never read back — a page refresh had no
+     * way to render an existing checklist. Returns items in stored order
+     * (the same {@code findByTask_IdOrderByPositionAsc} query {@link
+     * #reorderChecklistItem} already uses), reusing {@link #mapChecklistItem}
+     * so the DTO shape never drifts from the mutation endpoints' own responses.
+     */
+    @Transactional(readOnly = true)
+    public List<ChecklistItemResponse> getChecklist(UUID taskId) {
+        getTaskOrThrow(taskId);
+        return checklistItemRepository.findByTask_IdOrderByPositionAsc(taskId).stream()
+                .map(this::mapChecklistItem)
+                .toList();
+    }
+
     @Transactional
     public ChecklistItemResponse addChecklistItem(UUID taskId, UUID actingUserId, AddChecklistItemRequest request) {
         Task task = getTaskOrThrow(taskId);
@@ -474,12 +511,9 @@ public class TaskService {
     }
 
     @Transactional
-    public void removeLabel(UUID taskId, UUID labelId) {
-        TaskLabel label = labelRepository.findById(labelId)
-                .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "Label not found."));
-        if (!label.getTask().getId().equals(taskId)) {
-            throw new AppException(ErrorCode.NOT_FOUND, "Label not found on this task.");
-        }
+    public void removeLabel(UUID taskId, String labelName) {
+        TaskLabel label = labelRepository.findByTask_IdAndNameIgnoreCase(taskId, labelName.trim())
+                .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "Label not found on this task."));
         labelRepository.delete(label);
     }
 
@@ -514,7 +548,7 @@ public class TaskService {
         recordActivity(taskId, TaskActivityType.DEPENDENCY_ADDED, actingUserId, "Added a " + type + " dependency.");
         eventPublisher.publishEvent(new TaskDependencyCreatedEvent(taskId, task.getProjectId(), relatedTaskId, type.name(), Instant.now()));
 
-        return new DependencyResponse(dependency.getId(), relatedTaskId, type.name(), dependency.getCreatedAt());
+        return new DependencyResponse(dependency.getId(), relatedTaskId, relatedTask.getTaskKey(), relatedTask.getTitle(), type.name(), dependency.getCreatedAt());
     }
 
     @Transactional
@@ -534,7 +568,10 @@ public class TaskService {
     @Transactional(readOnly = true)
     public List<DependencyResponse> getDependencies(UUID taskId) {
         return dependencyRepository.findByTaskId(taskId).stream()
-                .map(d -> new DependencyResponse(d.getId(), d.getRelatedTaskId(), d.getType().name(), d.getCreatedAt()))
+                .map(d -> {
+                    Task relatedTask = getTaskOrThrow(d.getRelatedTaskId());
+                    return new DependencyResponse(d.getId(), d.getRelatedTaskId(), relatedTask.getTaskKey(), relatedTask.getTitle(), d.getType().name(), d.getCreatedAt());
+                })
                 .toList();
     }
 
@@ -680,6 +717,29 @@ public class TaskService {
         }
     }
 
+    private void assertCanEdit(Task task, UUID actingUserId) {
+        if (!task.getReporterId().equals(actingUserId) && 
+            !teamSecurityGuard.isLeadOfProjectsTeam(task.getProjectId(), actingUserId.toString())) {
+            throw new AppException(ErrorCode.FORBIDDEN, "Only the task creator or a team lead can edit this task.");
+        }
+    }
+
+    private void assertCanTransition(Task task, TaskStatus to, UUID actingUserId) {
+        if (teamSecurityGuard.isLeadOfProjectsTeam(task.getProjectId(), actingUserId.toString())) {
+            return;
+        }
+        
+        if (to == TaskStatus.IN_PROGRESS || to == TaskStatus.BLOCKED || to == TaskStatus.IN_REVIEW || to == TaskStatus.TODO) {
+            if (task.getAssigneeId() == null || !task.getAssigneeId().equals(actingUserId)) {
+                throw new AppException(ErrorCode.FORBIDDEN, "Only the assigned user or a team lead can move this task's status.");
+            }
+        } else if (to == TaskStatus.DONE || to == TaskStatus.CANCELLED || to == TaskStatus.DUPLICATE || to == TaskStatus.ARCHIVED) {
+            if (!task.getReporterId().equals(actingUserId)) {
+                throw new AppException(ErrorCode.FORBIDDEN, "Only the task creator or a team lead can move this task to " + to + ".");
+            }
+        }
+    }
+
     /** "Completed projects cannot modify tasks" — checked live against Project's own cache, never assumed. */
     private void assertProjectAcceptingWork(UUID projectId) {
         ProjectSnapshot snapshot = projectService.getSnapshot(projectId);
@@ -756,7 +816,7 @@ public class TaskService {
         int checklistCompleted = (int) checklistItemRepository.countByTask_IdAndCompletedTrue(task.getId());
 
         return new TaskResponse(
-                task.getId(), task.getProjectId(), task.getTitle(), task.getDescription(),
+                task.getId(), task.getTaskKey(), task.getProjectId(), task.getTitle(), task.getDescription(),
                 task.getType().name(), task.getPriority().name(), task.getStatus().name(),
                 task.getReporterId(), task.getAssigneeId(), task.getStoryPoints(), task.getEstimatedHours(),
                 task.getActualHours(), task.getDueDate(), task.getBlockedReason(),
@@ -768,8 +828,8 @@ public class TaskService {
 
     private TaskSummaryResponse mapToSummary(Task task) {
         return new TaskSummaryResponse(
-                task.getId(), task.getTitle(), task.getType().name(), task.getPriority().name(),
-                task.getStatus().name(), task.getAssigneeId(), task.getDueDate(), task.getCreatedAt());
+                task.getId(), task.getTaskKey(), task.getTitle(), task.getType().name(), task.getPriority().name(),
+                task.getStatus().name(), task.getAssigneeId(), task.getStoryPoints(), task.getBlockedReason(), task.getDueDate(), task.getCreatedAt());
     }
 
     private ChecklistItemResponse mapChecklistItem(ChecklistItem item) {

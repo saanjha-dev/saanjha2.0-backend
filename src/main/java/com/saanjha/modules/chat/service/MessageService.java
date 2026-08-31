@@ -180,9 +180,15 @@ public class MessageService {
     @Transactional(readOnly = true)
     public List<MessageResponse> getHistory(UUID conversationId, Instant cursor, Integer limit, UUID viewerId) {
         int size = (limit == null || limit <= 0 || limit > 200) ? DEFAULT_PAGE_SIZE : limit;
-        List<Message> page = messageRepository.findConversationHistoryBeforeCursor(
-                conversationId, cursor, PageRequest.of(0, size));
-        return batchMapToResponses(page, viewerId);
+        var pageable = PageRequest.of(0, size);
+        Instant clearedAt = conversationService.getClearedAt(conversationId, viewerId);
+        List<Message> messages;
+        if (cursor == null) {
+            messages = messageRepository.findConversationHistoryInitial(conversationId, clearedAt, pageable);
+        } else {
+            messages = messageRepository.findConversationHistoryBeforeCursor(conversationId, cursor, clearedAt, pageable);
+        }
+        return batchMapToResponses(messages, viewerId);
     }
 
     @Transactional(readOnly = true)
@@ -190,8 +196,15 @@ public class MessageService {
         messageRepository.findByIdAndConversationId(rootMessageId, conversationId)
                 .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "Thread root message not found in this conversation."));
         int size = (limit == null || limit <= 0 || limit > 200) ? DEFAULT_PAGE_SIZE : limit;
-        List<Message> page = messageRepository.findThreadRepliesBeforeCursor(rootMessageId, cursor, PageRequest.of(0, size));
-        return batchMapToResponses(page, viewerId);
+        var pageable = PageRequest.of(0, size);
+        Instant clearedAt = conversationService.getClearedAt(conversationId, viewerId);
+        List<Message> messages;
+        if (cursor == null) {
+            messages = messageRepository.findThreadRepliesInitial(rootMessageId, clearedAt, pageable);
+        } else {
+            messages = messageRepository.findThreadRepliesBeforeCursor(rootMessageId, cursor, clearedAt, pageable);
+        }
+        return batchMapToResponses(messages, viewerId);
     }
 
     // -------------------------------------------------------------------
@@ -199,7 +212,7 @@ public class MessageService {
     // messages are fetched in two queries total, not one per message.
     // -------------------------------------------------------------------
 
-    private List<MessageResponse> batchMapToResponses(List<Message> messages, UUID viewerId) {
+    public List<MessageResponse> batchMapToResponses(List<Message> messages, UUID viewerId) {
         if (messages.isEmpty()) {
             return List.of();
         }
