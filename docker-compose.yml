@@ -117,6 +117,10 @@ services:
       NOTIFICATION_HUB_API_KEY: ${NOTIFICATION_HUB_API_KEY:-dev-placeholder}
       NOTIFICATION_HUB_API_SECRET: ${NOTIFICATION_HUB_API_SECRET:-dev-placeholder}
       NOTIFICATION_WEBHOOK_SECRET: ${NOTIFICATION_WEBHOOK_SECRET:-dev-placeholder}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-placeholder-google-client-id}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-placeholder-google-client-secret}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-placeholder-github-client-id}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-placeholder-github-client-secret}
     ports:
       - "8080:8080"
     networks:

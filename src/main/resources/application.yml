@@ -6,6 +6,19 @@ spring:
   application:
     name: saanjha-backend
 
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:placeholder-google-client-id}
+            client-secret: ${GOOGLE_CLIENT_SECRET:placeholder-google-client-secret}
+            scope: profile, email
+          github:
+            client-id: ${GITHUB_CLIENT_ID:placeholder-github-client-id}
+            client-secret: ${GITHUB_CLIENT_SECRET:placeholder-github-client-secret}
+            scope: user:email, read:user
+
   lifecycle:
     timeout-per-shutdown-phase: 20s
 

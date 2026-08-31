@@ -169,6 +169,56 @@ public class AuthService {
     }
 
     @Transactional
+    public AuthTokens oauthLogin(String email, String authProvider, String providerId, String clientIp) {
+        // Find existing user by email or by providerId
+        Optional<AuthUser> maybeUser = userRepository.findByEmail(email);
+
+        AuthUser user;
+        if (maybeUser.isPresent()) {
+            user = maybeUser.get();
+            // If the user already exists (maybe via local signup), we can link the OAuth provider.
+            if ("LOCAL".equals(user.getAuthProvider())) {
+                user.setAuthProvider(authProvider);
+                user.setProviderId(providerId);
+                userRepository.save(user);
+            }
+        } else {
+            // Register new user via OAuth
+            user = new AuthUser();
+            user.setEmail(email);
+            user.setEmailVerified(true); // OAuth emails are verified by the provider
+            user.setAuthProvider(authProvider);
+            user.setProviderId(providerId);
+            
+            // Assign default role (e.g. ROLE_USER)
+            AuthRole memberRole = roleRepository.findByName("ROLE_USER")
+                    .orElseThrow(() -> new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Default role missing"));
+            user.getRoles().add(memberRole);
+            
+            user = userRepository.save(user);
+            eventPublisher.publish(new UserRegisteredEvent(user.getId(), user.getEmail(), Instant.now().toEpochMilli()));
+        }
+
+        if (user.getStatus() != AuthUser.AccountStatus.ACTIVE) {
+            switch (user.getStatus()) {
+                case LOCKED -> throw new AppException(ErrorCode.ACCOUNT_LOCKED, "This account has been locked due to suspicious activity.");
+                case BANNED -> throw new AppException(ErrorCode.ACCOUNT_SUSPENDED, "This account has been permanently banned.");
+                default -> throw new AppException(ErrorCode.ACCOUNT_SUSPENDED, "This account has been suspended by an administrator.");
+            }
+        }
+
+        // Create Session
+        AuthSession session = new AuthSession();
+        session.setUserId(user.getId());
+        session.setDeviceId("OAUTH2_DEVICE"); // Using a generic identifier since we don't have client fingerprint in the callback
+        session.setDeviceIp(clientIp);
+        session.setLastActivityAt(Instant.now());
+        sessionRepository.save(session);
+
+        return tokenRotationService.createTokenFamily(session, user);
+    }
+
+    @Transactional
     public void requestPasswordReset(String email) {
         userRepository.findByEmail(email).ifPresent(user -> {
             if (user.getStatus() == AuthUser.AccountStatus.ACTIVE) {

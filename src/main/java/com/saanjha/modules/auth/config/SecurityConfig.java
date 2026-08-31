@@ -32,6 +32,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
     private final RestAccessDeniedHandler restAccessDeniedHandler;
+    private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
 
     // Inject configuration values seamlessly
     @Value("${app.security.allowed-origins}")
@@ -40,10 +41,6 @@ public class SecurityConfig {
     @Value("${app.security.allow-credentials:true}")
     private boolean allowCredentials;
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(10);
-    }
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -147,6 +144,9 @@ public class SecurityConfig {
                         // happens in AnnouncementService, not here.
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/v1/announcements/live").permitAll()
                         .anyRequest().authenticated()
+                )
+                .oauth2Login(oauth2 -> oauth2
+                        .successHandler(oAuth2LoginSuccessHandler)
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
