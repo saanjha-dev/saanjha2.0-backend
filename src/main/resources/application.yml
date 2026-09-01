@@ -119,6 +119,7 @@ app:
     refresh-expiration-ms: 604800000
 
   security:
+    frontend-url: ${FRONTEND_URL:http://localhost:3000}
     # FIX (TD8/S6): no wildcard default here anymore. Every profile must set
     # its own explicit allow-list — see application-dev.yml (permissive, for
     # local network testing only) and application-prod.yml (real origins).
