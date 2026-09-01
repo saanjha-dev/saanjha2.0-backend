@@ -121,6 +121,7 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-placeholder-google-client-secret}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-placeholder-github-client-id}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-placeholder-github-client-secret}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     ports:
       - "8080:8080"
     networks:
