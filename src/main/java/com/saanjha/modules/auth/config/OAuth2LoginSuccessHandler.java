@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.OAuth2User;
@@ -19,6 +20,9 @@ import java.io.IOException;
 public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
 
     private final AuthService authService;
+
+    @Value("${app.security.frontend-url}")
+    private String frontendUrl;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
@@ -44,7 +48,7 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         AuthTokens tokens = authService.oauthLogin(email, authProvider, providerId, clientIp);
 
         // Redirect to the frontend callback URL with the tokens
-        String frontendCallbackUrl = "http://localhost:3000/login/oauth-callback";
+        String frontendCallbackUrl = frontendUrl + "/login/oauth-callback";
         String redirectUrl = String.format("%s?accessToken=%s&refreshToken=%s", 
             frontendCallbackUrl, 
             tokens.accessToken(), 
