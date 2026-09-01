@@ -333,7 +333,7 @@ public class ConversationService {
                 .map(c -> new ConversationSummaryResponse(
                         c.getId(), c.getType().name(), c.getName(),
                         c.getMemberCount(), c.getLastMessageAt(),
-                        c.getLastMessagePreview(), 0))
+                        c.getLastMessagePreview(), 0, null))
                 .toList();
     }
 
@@ -632,10 +632,19 @@ public class ConversationService {
                 .map(conversation -> {
                     ConversationMember member = memberRepository.findByConversationIdAndUserId(conversation.getId(), userId)
                             .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "Member not found"));
+                    
+                    UUID peerId = null;
+                    if (conversation.getType() == ConversationType.DIRECT_MESSAGE) {
+                        peerId = memberRepository.findByConversationId(conversation.getId()).stream()
+                            .map(ConversationMember::getUserId)
+                            .filter(id -> !id.equals(userId))
+                            .findFirst().orElse(null);
+                    }
+                            
                     return new ConversationSummaryResponse(
                             conversation.getId(), conversation.getType().name(), conversation.getName(),
                             conversation.getMemberCount(), conversation.getLastMessageAt(),
-                            conversation.getLastMessagePreview(), member.getUnreadCount());
+                            conversation.getLastMessagePreview(), member.getUnreadCount(), peerId);
                 });
     }
 
@@ -657,10 +666,19 @@ public class ConversationService {
                 .stream()
                 .collect(Collectors.toMap(ConversationMember::getConversationId, ConversationMember::getUnreadCount));
 
-        return conversations.map(conversation -> new ConversationSummaryResponse(
+        return conversations.map(conversation -> {
+            UUID peerId = null;
+            if (conversation.getType() == ConversationType.DIRECT_MESSAGE) {
+                peerId = memberRepository.findByConversationId(conversation.getId()).stream()
+                    .map(ConversationMember::getUserId)
+                    .filter(id -> !id.equals(viewerId))
+                    .findFirst().orElse(null);
+            }
+            return new ConversationSummaryResponse(
                 conversation.getId(), conversation.getType().name(), conversation.getName(),
                 conversation.getMemberCount(), conversation.getLastMessageAt(),
-                conversation.getLastMessagePreview(), unreadByConversation.getOrDefault(conversation.getId(), 0)));
+                conversation.getLastMessagePreview(), unreadByConversation.getOrDefault(conversation.getId(), 0), peerId);
+        });
     }
 
     @Transactional(readOnly = true)
