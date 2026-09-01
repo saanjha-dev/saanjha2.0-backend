@@ -21,7 +21,8 @@ public class ChatResponseDTOs {
 
     public record ConversationSummaryResponse(
             UUID id, String type, String name, int memberCount,
-            Instant lastMessageAt, String lastMessagePreview, int unreadCount
+            Instant lastMessageAt, String lastMessagePreview, int unreadCount,
+            UUID directMessagePeerId
     ) {}
 
     public record ConversationMemberResponse(
