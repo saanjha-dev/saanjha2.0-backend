@@ -51,10 +51,11 @@ public class SecurityConfig {
                 // WebSocket fails. Spring Security's default X-Frame-Options: DENY
                 // header blocks that fallback, causing a cascade of console errors
                 // (WebSocket failure → iframe blocked → 404 transport probes).
-                // SAMEORIGIN allows SockJS while still preventing cross-origin
-                // clickjacking.
+                // clickjacking. Since this is a pure API server (no HTML UI to clickjack),
+                // it is safe to disable this header completely so cross-origin frontends
+                // (like Vercel) can use the iframe fallback.
                 .headers(headers -> headers
-                        .frameOptions(frame -> frame.sameOrigin()))
+                        .frameOptions(frame -> frame.disable()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // FIX (hardening sprint, P0-2): without this, filter-chain-level auth
                 // failures (an anonymous request hitting an .authenticated() route, or
