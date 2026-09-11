@@ -103,6 +103,15 @@ public class ChatRequestDTOs {
             @NotNull UUID lastReadMessageId
     ) {}
 
+    public record TypistRequest(
+            Boolean isTyping
+    ) {}
+
+    public record LiveKitTokenRequest(
+            @NotBlank @Pattern(regexp = "^(voice|video)$", message = "Call type must be 'voice' or 'video'")
+            String callType
+    ) {}
+
     public record SearchRequest(
             @NotBlank @Size(min = 2, max = 200) String query,
             UUID senderId,

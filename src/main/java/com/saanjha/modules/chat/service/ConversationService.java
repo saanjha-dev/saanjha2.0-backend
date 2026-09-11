@@ -23,11 +23,17 @@ import com.saanjha.shared.exception.AppException;
 import com.saanjha.shared.exception.ErrorCode;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
 
 import java.time.Instant;
 import java.util.List;
@@ -57,6 +63,12 @@ public class ConversationService {
     private final ProjectService projectService;
     private final TeamService teamService;
     private final com.saanjha.modules.team.repository.MembershipRepository teamMembershipRepository;
+
+    @Value("${livekit.api-key:}")
+    private String livekitApiKey;
+
+    @Value("${livekit.api-secret:}")
+    private String livekitApiSecret;
 
     // -------------------------------------------------------------------
     // Creation
@@ -764,5 +776,40 @@ public class ConversationService {
                 member.getId(), member.getUserId(), member.getRole().name(), member.getStatus().name(),
                 member.getUnreadCount(), member.getLastReadAt(), member.getMutedUntil(), member.getJoinedAt()
         );
+    }
+
+    // -------------------------------------------------------------------
+    // Call Support (LiveKit)
+    // -------------------------------------------------------------------
+
+    @Transactional(readOnly = true)
+    public String generateLiveKitToken(UUID conversationId, UUID userId, String callType) {
+        if (livekitApiKey == null || livekitApiKey.isBlank() || livekitApiSecret == null || livekitApiSecret.isBlank()) {
+            throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "LiveKit is not configured on the server.");
+        }
+
+        // The user must be an active or muted member to join the call
+        ConversationMember member = memberRepository.findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.NOT_FOUND, "Not a member of this conversation."));
+
+        if (member.getStatus() == MemberStatus.BLOCKED || member.getStatus() == MemberStatus.LEFT) {
+            throw new AppException(ErrorCode.FORBIDDEN, "Not an active member of this conversation.");
+        }
+
+        Map<String, Object> videoGrant = new HashMap<>();
+        videoGrant.put("roomJoin", true);
+        videoGrant.put("room", conversationId.toString());
+
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("video", videoGrant);
+
+        return Jwts.builder()
+                .header().add("alg", "HS256").add("typ", "JWT").and()
+                .issuer(livekitApiKey)
+                .subject(userId.toString())
+                .claims(claims)
+                .expiration(new Date(System.currentTimeMillis() + 3600000)) // 1 hour
+                .signWith(Keys.hmacShaKeyFor(livekitApiSecret.getBytes(StandardCharsets.UTF_8)), Jwts.SIG.HS256)
+                .compact();
     }
 }
