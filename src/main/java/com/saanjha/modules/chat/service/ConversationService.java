@@ -800,6 +800,8 @@ public class ConversationService {
         Map<String, Object> videoGrant = new HashMap<>();
         videoGrant.put("roomJoin", true);
         videoGrant.put("room", conversationId.toString());
+        videoGrant.put("canPublish", true);
+        videoGrant.put("canSubscribe", true);
 
         Map<String, Object> claims = new HashMap<>();
         claims.put("video", videoGrant);
