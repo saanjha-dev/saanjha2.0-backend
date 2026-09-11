@@ -80,4 +80,6 @@ public class ChatResponseDTOs {
     public record TypingEvent(UUID conversationId, UUID userId, boolean typing) {}
 
     public record PresenceEvent(UUID userId, String status, Instant since) {}
+
+    public record LiveKitTokenResponse(String token) {}
 }
