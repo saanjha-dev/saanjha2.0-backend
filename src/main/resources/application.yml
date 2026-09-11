@@ -3,6 +3,10 @@ server:
   shutdown: graceful
   forward-headers-strategy: framework
 
+livekit:
+  api-key: ${LIVEKIT_API_KEY:placeholder_livekit_api_key}
+  api-secret: ${LIVEKIT_API_SECRET:placeholder_livekit_api_secret}
+
 spring:
   application:
     name: saanjha-backend

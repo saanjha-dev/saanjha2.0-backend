@@ -220,6 +220,17 @@ public class ConversationController {
         return ResponseEntity.ok(ApiEnvelope.success(result));
     }
 
+    @PostMapping("/v1/chats/conversations/{id}/call/token")
+    @RateLimit(action = "generate-call-token", baseLimit = 10)
+    @PreAuthorize("hasAuthority('chat:participate') and @chatGuard.isMember(#id, authentication.name)")
+    @Operation(summary = "Generate LiveKit Token", description = "Generates a JWT token to join a LiveKit voice/video call for this conversation.")
+    public ResponseEntity<ApiEnvelope<LiveKitTokenResponse>> generateCallToken(
+            @PathVariable UUID id, @Valid @RequestBody LiveKitTokenRequest request) {
+        UUID userId = SecurityUtils.getCurrentUserId();
+        String token = conversationService.generateLiveKitToken(id, userId, request.callType());
+        return ResponseEntity.ok(ApiEnvelope.success(new LiveKitTokenResponse(token)));
+    }
+
     // ========================================================================
     // HELPERS
     // ========================================================================
