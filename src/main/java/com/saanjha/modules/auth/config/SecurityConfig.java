@@ -47,6 +47,14 @@ public class SecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                // SockJS uses an iframe-based transport as a fallback when native
+                // WebSocket fails. Spring Security's default X-Frame-Options: DENY
+                // header blocks that fallback, causing a cascade of console errors
+                // (WebSocket failure → iframe blocked → 404 transport probes).
+                // SAMEORIGIN allows SockJS while still preventing cross-origin
+                // clickjacking.
+                .headers(headers -> headers
+                        .frameOptions(frame -> frame.sameOrigin()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // FIX (hardening sprint, P0-2): without this, filter-chain-level auth
                 // failures (an anonymous request hitting an .authenticated() route, or
