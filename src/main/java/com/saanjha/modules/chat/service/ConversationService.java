@@ -36,6 +36,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -799,6 +800,8 @@ public class ConversationService {
         Map<String, Object> videoGrant = new HashMap<>();
         videoGrant.put("roomJoin", true);
         videoGrant.put("room", conversationId.toString());
+        videoGrant.put("canPublish", true);
+        videoGrant.put("canSubscribe", true);
 
         Map<String, Object> claims = new HashMap<>();
         claims.put("video", videoGrant);
