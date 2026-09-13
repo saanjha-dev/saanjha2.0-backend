@@ -32,7 +32,7 @@ public class ReadReceiptService {
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
-    public void markReadThrough(UUID conversationId, UUID userId, UUID messageId) {
+    public Instant markReadThrough(UUID conversationId, UUID userId, UUID messageId) {
         ConversationMember member = memberRepository.findByConversationIdAndUserId(conversationId, userId)
                 .orElseThrow(() -> new AppException(ErrorCode.CHAT_NOT_A_MEMBER));
         messageRepository.findByIdAndConversationId(messageId, conversationId)
@@ -52,6 +52,7 @@ public class ReadReceiptService {
         }
 
         eventPublisher.publishEvent(new ReadReceiptUpdatedEvent(conversationId, userId, messageId, now));
+        return now;
     }
 
     /** Called from MessageService on every send to fan out unread-count increments
