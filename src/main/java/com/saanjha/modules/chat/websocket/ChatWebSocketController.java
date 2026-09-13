@@ -130,9 +130,9 @@ public class ChatWebSocketController {
     @MessageMapping("/conversations/{conversationId}/read")
     public void markRead(@DestinationVariable UUID conversationId, @Payload MarkReadSignal signal, Principal principal) {
         UUID userId = requireUser(principal);
-        readReceiptService.markReadThrough(conversationId, userId, signal.lastReadMessageId());
+        Instant lastReadAt = readReceiptService.markReadThrough(conversationId, userId, signal.lastReadMessageId());
         messagingTemplate.convertAndSend("/topic/conversations/" + conversationId + "/receipts",
-                new com.saanjha.modules.chat.dto.ChatResponseDTOs.UnreadSummaryResponse(conversationId, 0, Instant.now()));
+                new com.saanjha.modules.chat.dto.ChatResponseDTOs.UnreadSummaryResponse(conversationId, userId, 0, lastReadAt));
     }
 
     @MessageMapping("/conversations/{conversationId}/webrtc/signal")
