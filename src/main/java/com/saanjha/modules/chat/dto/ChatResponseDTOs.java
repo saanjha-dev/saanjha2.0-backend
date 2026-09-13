@@ -72,7 +72,7 @@ public class ChatResponseDTOs {
             UUID id, String actionType, UUID targetUserId, UUID messageId, String reason, UUID actorId, Instant createdAt
     ) {}
 
-    public record UnreadSummaryResponse(UUID conversationId, int unreadCount, Instant lastReadAt) {}
+    public record UnreadSummaryResponse(UUID conversationId, UUID userId, int unreadCount, Instant lastReadAt) {}
 
     public record ChatMutationResponse(String message, String status) {}
 
